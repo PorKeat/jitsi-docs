@@ -26,6 +26,7 @@
 | [**05. Network & Port Allocation**](./05-network-and-ports.md) | Networking & Firewalls | Port mapping table (3000, 8443, 10000/udp, 4443), NAT traversal, and SFU traffic. |
 | [**06. Operations & Troubleshooting**](./06-operations-and-troubleshooting.md) | DevOps & Maintenance | Docker Compose management cheat sheet, log inspection, and troubleshooting fixes. |
 | [**07. Configuration & Reference**](./07-config-and-scripts-reference.md) | Config & Architecture Guide | Detailed breakdown of environment variables, Next.js JWT signing, and directory layout. |
+| [**08. Next.js Integration & Customization**](./08-nextjs-integration-and-customization.md) | Frontend Dev & SDK Guide | Next.js 14 App Router, dynamic SDK imports, IFrame API commands/events, custom toolbar, Green Room, and Whiteboard. |
 
 ---
 
