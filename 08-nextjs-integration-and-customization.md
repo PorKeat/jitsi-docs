@@ -9,20 +9,20 @@
 Unity Meet decouples the **WebRTC Media Engine** (Jitsi Videobridge, Prosody XMPP, Jicofo) from the **User Interface** (Next.js 14).
 
 ```mermaid
-graph TD
-    subgraph Frontend ["Next.js 14 App Router (Port 3000)"]
-        UI[Custom Native UI<br/>Floating Toolbar, Drawers, Modals]
-        WB[Collaborative Whiteboard<br/>Laser Pointer & Color Studio]
+flowchart TD
+    subgraph Frontend["Next.js 14 App Router (Port 3000)"]
+        UI["Custom Native UI (Floating Toolbar, Drawers, Modals)"]
+        WB["Collaborative Whiteboard (Laser Pointer & Color Studio)"]
         SDK["@jitsi/react-sdk (JitsiMeeting)"]
         TokenAPI["/api/token & /api/create-room"]
     end
 
-    subgraph Backend ["Jitsi WebRTC Stack (Port 8443)"]
-        Web[Jitsi Web / Nginx]
-        Prosody[Prosody XMPP & JWT Auth]
-        Jicofo[Jicofo Focus Allocator]
-        JVB[JVB Media Bridge (UDP 10000)]
-        Excalidraw[Excalidraw Relay (Port 3002)]
+    subgraph Backend["Jitsi WebRTC Stack (Port 8443)"]
+        Web["Jitsi Web / Nginx"]
+        Prosody["Prosody XMPP & JWT Auth"]
+        Jicofo["Jicofo Focus Allocator"]
+        JVB["JVB Media Bridge (UDP 10000)"]
+        Excalidraw["Excalidraw Relay (Port 3002)"]
     end
 
     SDK <-->|IFrame API Commands & Events| Web
