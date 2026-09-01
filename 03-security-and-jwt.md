@@ -8,11 +8,13 @@ Unity Meet implements an enterprise multi-layer security architecture designed t
 
 | Layer | Feature | How It Protects You |
 | :--- | :--- | :--- |
-| **Layer 1: Token Gate** | **Cryptographic JWT Tokens** | Rooms cannot be initialized or joined without an HMAC-SHA256 token signed by the Next.js server. |
-| **Layer 2: Direct URL Lockdown** | **Disabled Guests & Welcome Page** | `ENABLE_GUESTS=0`, `ENABLE_WELCOME_PAGE=0`. Typing `https://localhost:8443/room` directly is rejected with `403 Forbidden`. |
-| **Layer 3: Knocking Lobby Mode** | **Host Admission Gate** | When enabled by the host, participants must "knock" and wait in a waiting room until approved by the host. |
-| **Layer 4: Meeting Passcode (PIN)** | **Room Passwords** | Hosts can set a custom meeting password via the **Security** toolbar button for VIP meetings. |
-| **Layer 5: Media Encryption** | **DTLS-SRTP Stream Encryption** | WebRTC audio and video packets are encrypted with AES-256 over UDP port `10000`. |
+| **Layer 1: Token Gate** | **Cryptographic JWT Tokens** | Rooms cannot be initialized or joined without an HMAC-SHA256 token signed by the FastAPI backend service (`api/`). |
+| **Layer 2: AES-256-GCM Slugs** | **Authenticated Encryption (AEAD)** | Invite links carry 12-byte IV + 16-byte tag ciphertexts to prevent tampering and URL spoofing. |
+| **Layer 3: Host Secret Validation** | **Creator Verification (`sec_<hex>`)** | Only verified room creators holding host secrets can modify room settings or trigger conference termination. |
+| **Layer 4: Direct URL Lockdown** | **Disabled Guests & Welcome Page** | `ENABLE_GUESTS=0`, `ENABLE_WELCOME_PAGE=0`. Typing `https://localhost:8443/room` directly is rejected with `403 Forbidden`. |
+| **Layer 5: Knocking Lobby Mode** | **Host Admission Gate** | When enabled by the host, participants must "knock" and wait in a waiting room until approved by the host. |
+| **Layer 6: Participant Ban Enforcement** | **Token Revocation** | Removed/kicked participants are tracked in the backend ban service and blocked from requesting new tokens. |
+| **Layer 7: Media Encryption** | **DTLS-SRTP Stream Encryption** | WebRTC audio and video packets are encrypted with AES-256 over UDP port `10000`. |
 
 ---
 
@@ -29,39 +31,58 @@ Unity Meet implements an enterprise multi-layer security architecture designed t
 
 ---
 
-## 🔑 JWT Token Structure & Signing
+## 🔑 FastAPI JWT Token Structure & Signing (`api/app/core/security.py`)
 
-The Next.js backend generates JSON Web Tokens on the server using HMAC-SHA256 (`HS256`).
+The FastAPI backend generates JSON Web Tokens using HMAC-SHA256 (`HS256`):
 
-```typescript
-import jwt from "jsonwebtoken";
+```python
+import time
+import jwt
+import secrets
+from app.core.config import settings
 
-const JWT_APP_ID = process.env.JWT_APP_ID || "my_jitsi_app";
-const JWT_APP_SECRET = process.env.JWT_APP_SECRET || "your_secret";
+def generate_jitsi_token(
+    room: str,
+    user_name: str = "Guest",
+    is_moderator: bool = False,
+    user_id: str | None = None,
+    expiration_hours: int = 24,
+) -> str:
+    app_id = settings.JWT_APP_ID or "my_jitsi_app"
+    secret = settings.JWT_APP_SECRET
+    unique_id = user_id or (
+        f"host_{secrets.token_hex(4)}" if is_moderator else f"guest_{secrets.token_hex(4)}"
+    )
 
-export function generateJitsiToken(room: string, userName: string, isModerator = false) {
-  const payload = {
-    aud: JWT_APP_ID,
-    iss: JWT_APP_ID,
-    sub: "*",
-    room: room,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 86400, // 24-hour expiration
-    context: {
-      user: {
-        name: userName,
-        email: `${userName.toLowerCase()}@unitymeet.local`,
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${userName}`,
-        moderator: isModerator,
-      },
-      features: {
-        recording: true,
-        livestreaming: true,
-        "screen-sharing": true,
-      },
-    },
-  };
+    now = int(time.time())
+    exp = now + (expiration_hours * 3600)
 
-  return jwt.sign(payload, JWT_APP_SECRET, { algorithm: "HS256" });
-}
+    payload = {
+        "aud": app_id,
+        "iss": app_id,
+        "sub": "*",
+        "room": "*",
+        "iat": now,
+        "nbf": now - 10,
+        "exp": exp,
+        "context": {
+            "user": {
+                "id": unique_id,
+                "name": user_name,
+                "email": f"{user_name.lower()}.{unique_id}@local.meet",
+                "avatar": f"https://api.dicebear.com/7.x/bottts/svg?seed={unique_id}",
+                "moderator": bool(is_moderator),
+                "affiliation": "owner" if is_moderator else "member",
+                "role": "moderator" if is_moderator else "participant",
+            },
+            "group": "admin" if is_moderator else "member",
+            "features": {
+                "recording": bool(is_moderator),
+                "livestreaming": bool(is_moderator),
+                "screen-sharing": True,
+            },
+        },
+    }
+
+    return jwt.encode(payload, secret, algorithm="HS256")
 ```

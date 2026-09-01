@@ -1,23 +1,29 @@
-# 08 — Next.js Integration & Customization Guide
+# 08 — Next.js 16 Integration & Customization Guide
 
-> Comprehensive developer guide for integrating Jitsi WebRTC with Next.js 14 App Router and building custom conferencing user interfaces.
+> Comprehensive developer guide for integrating Jitsi WebRTC with Next.js 16 App Router (Turbopack), FastAPI backend proxy, and building custom conferencing user interfaces.
 
 ---
 
 ## 1. Architecture Overview
 
-Unity Meet decouples the **WebRTC Media Engine** (Jitsi Videobridge, Prosody XMPP, Jicofo) from the **User Interface** (Next.js 14).
+Unity Meet decouples the **WebRTC Media Engine** (Jitsi Videobridge, Prosody XMPP, Jicofo) and **FastAPI Auth & Room State Backend** from the **User Interface** (Next.js 16).
 
 ```mermaid
 flowchart TD
-    subgraph Frontend["Next.js 14 App Router (Port 3000)"]
-        UI["Custom Native UI (Floating Toolbar, Drawers, Modals)"]
+    subgraph Frontend["Next.js 16 App Router (Port 3000)"]
+        UI["Custom Native UI (Capsule Toolbar, Drawers, Modals)"]
+        Dashboard["Workspace Dashboard (Telemetry, Recent Rooms, Calendar)"]
         WB["Collaborative Whiteboard (Laser Pointer & Color Studio)"]
         SDK["@jitsi/react-sdk (JitsiMeeting)"]
-        TokenAPI["/api/token & /api/create-room"]
     end
 
-    subgraph Backend["Jitsi WebRTC Stack (Port 8443)"]
+    subgraph BackendAPI["FastAPI Backend (Port 8000)"]
+        TokenAPI["/api/token & /api/create-room"]
+        RoomState["/api/batch-check-rooms & /api/end-room"]
+        Telemetry["/api/telemetry & Ban Enforcement"]
+    end
+
+    subgraph JitsiStack["Jitsi WebRTC Stack (Port 8443)"]
         Web["Jitsi Web / Nginx"]
         Prosody["Prosody XMPP & JWT Auth"]
         Jicofo["Jicofo Focus Allocator"]
@@ -25,6 +31,7 @@ flowchart TD
         Excalidraw["Excalidraw Relay (Port 3002)"]
     end
 
+    Frontend <-->|Internal Proxy /api/*| BackendAPI
     SDK <-->|IFrame API Commands & Events| Web
     TokenAPI <-->|Signed HS256 JWT| Prosody
     Web <--> Prosody
@@ -35,55 +42,7 @@ flowchart TD
 
 ---
 
-## 2. Server-Side Token Generation (`web-app/lib/jwt.ts`)
-
-To prevent room hijacking and control moderator permissions, JWT tokens are generated **server-side only** using HS256:
-
-```typescript
-import jwt from "jsonwebtoken";
-
-export function generateJitsiToken({
-  room,
-  userName = "Guest",
-  isModerator = false,
-}: {
-  room: string;
-  userName?: string;
-  isModerator?: boolean;
-}) {
-  const secret = process.env.JWT_APP_SECRET || "your_secret";
-  const appId = process.env.JWT_APP_ID || "my_jitsi_app";
-
-  const payload = {
-    aud: appId,
-    iss: appId,
-    sub: "*",
-    room: room,
-    context: {
-      user: {
-        name: userName,
-        email: `${userName.toLowerCase().replace(/\s+/g, ".")}@local.meet`,
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(userName)}`,
-        moderator: isModerator,
-      },
-      features: {
-        recording: true,
-        livestreaming: true,
-        "screen-sharing": true,
-      },
-    },
-  };
-
-  return jwt.sign(payload, secret, {
-    algorithm: "HS256",
-    expiresIn: "24h",
-  });
-}
-```
-
----
-
-## 3. Dynamic SDK Import (Disabling SSR)
+## 2. Dynamic SDK Import (Disabling SSR)
 
 The `@jitsi/react-sdk` package requires client-side `window` and `document` APIs. Always import dynamically with `ssr: false`:
 
@@ -95,8 +54,8 @@ const JitsiMeeting = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex-1 flex items-center justify-center bg-[#0a0814] text-white">
-        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="flex-1 flex items-center justify-center bg-[#0b0c10] text-white">
+        <div className="w-10 h-10 border-3 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     ),
   }
@@ -105,7 +64,7 @@ const JitsiMeeting = dynamic(
 
 ---
 
-## 4. Jitsi IFrame API Control & Event Listeners
+## 3. Jitsi IFrame API Control & Event Listeners
 
 Store the API instance in a `useRef` to trigger actions and listen to state changes:
 
@@ -138,7 +97,8 @@ const apiRef = useRef<any>(null);
     apiRef.current = externalApi;
 
     // Listen to conference events
-    externalApi.addListener("videoConferenceLeft", () => setMeetingEnded(true));
+    externalApi.addListener("videoConferenceLeft", () => router.push("/"));
+    externalApi.addListener("readyToClose", () => router.push("/"));
     externalApi.addListener("audioMuteStatusChanged", ({ muted }) => setIsMuted(muted));
     externalApi.addListener("participantJoined", (p) => handleParticipantJoin(p));
   }}
@@ -158,9 +118,9 @@ const apiRef = useRef<any>(null);
 
 ---
 
-## 5. UI Customization Examples
+## 4. UI Customization & Green Room
 
-### A. Pre-Join Green Room (Live VU Meter)
+### A. Pre-Join Green Room (Live Audio Visualizer)
 Using Web Audio API and `navigator.mediaDevices.getUserMedia`:
 
 ```tsx
@@ -176,10 +136,10 @@ setAudioLevel(volume);
 ```
 
 ### B. Custom Floating Capsule Toolbar
-Positioned at bottom center with frosted glass styling:
+Positioned at bottom center with clean translucent styling:
 
 ```tsx
-<div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 bg-[#120e26]/90 backdrop-blur-2xl border border-purple-500/30 px-5 py-2.5 rounded-full shadow-2xl">
+<div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-[#12141c]/90 backdrop-blur-xl border border-white/10 px-5 py-2.5 rounded-full shadow-lg">
   <button onClick={() => apiRef.current?.executeCommand("toggleAudio")}>
     {isMuted ? <MicOff /> : <Mic />}
   </button>
@@ -192,30 +152,10 @@ Positioned at bottom center with frosted glass styling:
 </div>
 ```
 
-### C. 60 FPS Real-Time Laser Pointer
-Rendered on a separate overlay canvas:
-
-```tsx
-const renderLaser = () => {
-  const ctx = laserCanvas.getContext("2d");
-  ctx.clearRect(0, 0, width, height);
-  const now = Date.now();
-  const points = laserPoints.filter((p) => now - p.time < 650);
-
-  points.forEach((p, i) => {
-    const alpha = 1 - (now - p.time) / 650;
-    ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
-    ctx.stroke();
-  });
-
-  requestAnimationFrame(renderLaser);
-};
-```
-
 ---
 
-## 6. Theme & Branding Customization
+## 5. Theme & Branding Customization
 
-1. **Color Palette:** Modify `web-app/tailwind.config.js` to change primary accent colors (e.g. from purple `#a855f7` to blue `#3b82f6` or brand colors).
+1. **Dark & Light Mode Switch:** Stored in `localStorage.getItem("unity_theme")` and applied dynamically across the dashboard and components.
 2. **Logo Asset:** Replace `web-app/public/logo.png` and `config/web/images/watermark.png` with your company logo.
-3. **App Title:** Set `APP_NAME` in `web-app/app/meeting/[room]/page.tsx` and `app/layout.tsx`.
+3. **App Title:** Set `APP_NAME` in `web-app/app/layout.tsx`.

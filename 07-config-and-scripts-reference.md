@@ -12,6 +12,7 @@ This guide details the Jitsi backend configurations, environment variables, and 
 | `HTTP_PORT` | Nginx HTTP port | `8080` |
 | `HTTPS_PORT` | Nginx HTTPS port | `8443` |
 | `PORTAL_PORT` | Next.js Frontend port | `3000` |
+| `API_PORT` | FastAPI Backend port | `8000` |
 | `ENABLE_AUTH` | Require token authentication | `1` |
 | `ENABLE_GUESTS` | Allow unauthenticated guests | `0` (Disabled - all guests use signed JWTs) |
 | `AUTH_TYPE` | Authentication mechanism | `jwt` |
@@ -21,58 +22,28 @@ This guide details the Jitsi backend configurations, environment variables, and 
 
 ---
 
-## 🔐 Built-In Next.js JWT Generation (`web-app/lib/jwt.ts`)
-
-Tokens are signed on-demand by the Next.js server:
-
-```typescript
-import jwt from "jsonwebtoken";
-
-const JWT_APP_ID = process.env.JWT_APP_ID || "my_jitsi_app";
-const JWT_APP_SECRET = process.env.JWT_APP_SECRET || "secret";
-
-export function generateJitsiToken(room: string, userName: string, isModerator = false) {
-  const payload = {
-    aud: JWT_APP_ID,
-    iss: JWT_APP_ID,
-    sub: "*",
-    room: room,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 86400,
-    context: {
-      user: {
-        name: userName,
-        email: `${userName.toLowerCase()}@unitymeet.local`,
-        moderator: isModerator,
-      },
-      features: {
-        recording: true,
-        livestreaming: true,
-        "screen-sharing": true,
-      },
-    },
-  };
-
-  return jwt.sign(payload, JWT_APP_SECRET, { algorithm: "HS256" });
-}
-```
-
----
-
 ## 🗂️ Project Directory Structure
 
 ```text
 Jitsi/
 ├── .env                  # Environment secrets and port configurations
-├── docker-compose.yml    # Docker services (web, prosody, jicofo, jvb, portal)
-├── docs/                 # Documentation (Symlinked to ~/Desktop/jitsi-docs)
+├── docker-compose.yml    # Docker services (web, prosody, jicofo, jvb, api, web, whiteboard)
+├── api/                  # High-performance FastAPI Backend Service (Port 8000)
+│   ├── app/
+│   │   ├── api/          # Endpoints: rooms, token, settings, bans, telemetry
+│   │   ├── core/         # Config & Cryptography (AES-256-GCM, HS256 JWT)
+│   │   ├── schemas/      # Strongly typed Pydantic models
+│   │   └── services/     # Room state, Token service, Ban service
+│   ├── tests/            # Automated test suite
+│   └── Dockerfile        # Python 3.11 container
 ├── config/               # Volume mounts for Jitsi daemon configurations
 │   ├── jicofo/           # Jicofo conference focus daemon config
 │   ├── jvb/              # Jitsi Videobridge media relay config
 │   ├── prosody/          # Prosody XMPP signaling & auth config
 │   └── web/              # Jitsi web frontend images & config
-└── web-app/              # Next.js 14 Full-Stack Meeting Application
-    ├── app/              # Next.js App Router (homepage, meeting room, API routes)
-    ├── lib/              # JWT token generator and utility functions
-    └── public/           # Logo assets & brand watermarks
+└── web-app/              # Next.js 16 (Turbopack) Full-Stack Meeting Application
+    ├── app/              # Next.js App Router (dashboard, prejoin, meeting room)
+    ├── components/       # Meeting UI, Green Room, Drawers, Modals, Whiteboard
+    ├── public/           # Logo assets & brand watermarks
+    └── eslint.config.mjs # ESLint 9 Flat Config
 ```
