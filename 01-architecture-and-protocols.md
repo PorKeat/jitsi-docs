@@ -1,73 +1,64 @@
-# 01. Architecture & Protocol Overview
+# 01. Architecture, Protocols & Plain English Guide
 
-Unity Meet is built as an enterprise-grade WebRTC conferencing platform consisting of containerized microservices and standardized networking protocols.
+This guide explains the complete architecture, networking protocols, and technical terms used in Unity Meet in **simple, easy-to-understand English**.
 
 ---
 
-## 🏛️ Microservices Stack
+## 📖 Plain English Dictionary: What It Is, How It Works & Who Can See
 
-| Service | Container | Role | Key Technologies |
+| Hard Term | What Is It? | How Does It Work? | Who Can See It? |
 | :--- | :--- | :--- | :--- |
-| **Web Portal** | `jitsi-web-1` (Port 3000) | Modern UI frontend, Workspace Dashboard, Green Room, native toolbar, Whiteboard | Next.js 16 (Turbopack), React 19, `@jitsi/react-sdk`, Tailwind CSS, TypeScript |
-| **FastAPI Backend** | `jitsi-api-1` (Port 8000) | JWT token signing, room lifecycle, AES-256-GCM encryption, ban enforcement, telemetry | Python 3.11, FastAPI, Pydantic, Cryptography (AESGCM), PyJWT |
-| **Nginx Web Proxy** | `jitsi-jitsi-web-1` (Port 8443) | Reverse proxy, static Jitsi assets, WebSockets/BOSH endpoint | Nginx, OpenSSL TLS 1.3 |
-| **Prosody XMPP** | `jitsi-prosody-1` | XMPP signaling server, JWT validation module, MUC (Multi-User Chat) rooms | Lua, Prosody XMPP Server, `mod_auth_token` |
-| **Jicofo** | `jicofo` | Conference focus agent, bridges participants, allocates JVB media channels | Java 17, XMPP Focus Component |
-| **JVB SFU** | `jitsi-jvb-1` (Port 10000 UDP) | Selective Forwarding Unit (SFU), WebRTC audio/video relay, Colibri REST API | Java, Colibri Protocol, libnice, WebRTC |
-| **Whiteboard Relay** | `jitsi-whiteboard-1` (Port 3002) | Real-time collaborative Excalidraw drawing canvas WebSocket relay | Node.js, WebSocket Server |
+| **DTLS-SRTP** | The encryption shield for live video & audio streams. | Encrypts UDP packets as they travel over the internet to the video server. | **You, other attendees, and the Jitsi server.** (Hackers on Wi-Fi and your ISP CANNOT see anything). |
+| **True E2EE** | True End-to-End Encryption where nobody in the middle can see anything. | Your browser locks raw video frames with a private password before sending. | **ONLY You and other attendees.** (Even the server administrator CANNOT see your video). |
+| **SFU (Videobridge / JVB)** | A smart video router (Selective Forwarding Unit). | Receives 1 video stream from you and forwards it to others without decoding or mixing. | Routes packets to all connected attendees. |
+| **XMPP (Prosody)** | The live messaging and presence protocol. | Sends instant updates whenever someone joins, leaves, mutes, or raises their hand. | The Prosody server broadcasts presence events to attendees in the room. |
+| **Jicofo** | The meeting room traffic controller / allocator. | Automatically assigns rooms to the best available video server (JVB). | Internal system coordinator. |
+| **JWT (HS256 Token)** | A digital entry ticket signed by the backend. | Contains your username, room name, and whether you are a Host or a Guest. | Checked by the Prosody server before letting you into the room. |
+| **AES-256-GCM** | Military-grade authenticated encryption for links. | Scrambles the real room name with a 12-byte random number and 16-byte tag. | Only users with the invite link and decryption key can see the real room name. |
+| **ICE / STUN / TURN** | Connection pathfinders through routers & firewalls. | STUN finds your public IP address; ICE tests the fastest path; TURN relays if blocked. | Used to establish peer-to-server WebRTC network channels. |
+| **WebSockets (WSS)** | An open, two-way communication pipe in your browser. | Keeps a permanent connection open so chat, signaling, and whiteboard draw in real-time. | Encrypted under TLS 1.3 HTTPS/WSS. |
 
 ---
 
-## 🌐 Network Protocols Used
+## 🏛️ Microservices Stack Breakdown
 
-### 1. WebRTC (Real-Time Communications)
-- **Audio/Video Media:** Transmitted over **SRTP** (Secure Real-time Transport Protocol) with 128-bit / 256-bit AES encryption.
-- **Key Exchange & Handshake:** Handled via **DTLS** (Datagram Transport Layer Security) over UDP port `10000`.
-- **NAT Traversal & Candidate Discovery:** Uses **ICE** (Interactive Connectivity Establishment) and **STUN** (Session Traversal Utilities for NAT).
-- **Data Channels:** Transmitted over **SCTP** (Stream Control Transmission Protocol) encapsulated in DTLS for chat, reactions, and dominant speaker events.
-
-### 2. XMPP & Signaling Protocols
-- **Client Signaling:** Browser clients establish secure WebSocket / BOSH connections to `wss://localhost:8443/xmpp-websocket` for presence and room state.
-- **MUC (Multi-User Chat):** Prosody manages room occupancy (`muc.meet.jitsi`), presence, and speaker status.
-- **Colibri Protocol (XMPP / REST):** Jicofo communicates with JVB over internal port `8088` to dynamically allocate and destroy video bridges for active conferences.
-
-### 3. Authentication & Cryptography Protocols
-- **JWT (JSON Web Token):** Cryptographically signed HMAC-SHA256 tokens issued by the FastAPI backend (`api/`) and verified by Prosody before any user can create or join a room.
-- **AES-256-GCM AEAD:** URL-safe ciphertext invite slugs containing room credentials with random 12-byte IVs and 16-byte authentication tags.
+| Service | Container | Role (Simple Explanation) | Tech Stack |
+| :--- | :--- | :--- | :--- |
+| **Web Portal** | `jitsi-web-1` (Port 3000) | The main website with dashboard, camera preview, and video call controls. | Next.js 16 (Turbopack), React 19, Tailwind CSS |
+| **FastAPI Backend** | `jitsi-api-1` (Port 8000) | Signs login tokens, encrypts invite links, checks room status, and manages bans. | Python 3.11, FastAPI, Pydantic v2, PyJWT |
+| **Nginx Web Proxy** | `jitsi-jitsi-web-1` (Port 8443) | Secure HTTPS gateway handling SSL certificates and static WebRTC files. | Nginx, OpenSSL TLS 1.3 |
+| **Prosody XMPP** | `jitsi-prosody-1` | Handles chat, validates JWT tokens, and manages participant presence. | Lua, Prosody XMPP Server |
+| **Jicofo** | `jicofo` | Room focus manager that allocates video bridges for each conference. | Java 17, XMPP Focus Component |
+| **JVB SFU** | `jitsi-jvb-1` (Port 10000 UDP) | Video Media Server that routes live audio and video streams between attendees. | Java, WebRTC, Colibri Protocol |
+| **Whiteboard Relay** | `jitsi-whiteboard-1` (Port 3002) | Real-time WebSocket relay server for the shared collaborative drawing canvas. | Node.js, Excalidraw Backend |
 
 ---
 
-## 🔄 End-to-End Call Flow
+## 🔄 End-to-End Call Flow (Step-by-Step)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User Browser
-    participant Web as Next.js 16 (:3000)
-    participant API as FastAPI Backend (:8000)
-    participant Nginx as Web Proxy (:8443)
-    participant Prosody as Prosody XMPP
-    participant Jicofo as Jicofo Agent
-    participant JVB as JVB SFU (:10000 UDP)
-
-    User->>Web: 1. Click "Start Instant Meeting"
-    Web->>API: 2. POST /api/create-room
-    API->>API: 3. Generate Host Secret & Signed HS256 JWT
-    API-->>Web: 4. Return Room Code + Host Token
-    Web-->>User: 5. Transition to Green Room Lobby
-    User->>Nginx: 6. Connect WebRTC Client with JWT
-    Nginx->>Prosody: 7. Forward XMPP Auth & Validate Token
-    Prosody-->>User: 8. JWT Validated, Join Room MUC
-    Prosody->>Jicofo: 9. Trigger Conference Allocation
-    Jicofo->>JVB: 10. Allocate Media Bridge (Colibri)
-    JVB-->>User: 11. Establish DTLS-SRTP Media Streams (Port 10000 UDP)
-    Note over User,JVB: Live Encrypted HD Video & Audio Active
+```text
+1. User clicks "Start Instant Meeting" on Next.js 16 Web UI (Port 3000)
+   ▼
+2. Web UI asks FastAPI Backend (Port 8000): "Create a new meeting room"
+   ▼
+3. FastAPI generates a Host Secret (sec_<hex>) and signs a secure HS256 JWT token
+   ▼
+4. User enters Green Room to preview camera and test microphone volume
+   ▼
+5. User enters meeting -> Nginx Gateway (Port 8443) verifies JWT with Prosody XMPP
+   ▼
+6. Prosody validates token and asks Jicofo: "Allocate a video bridge for this room"
+   ▼
+7. Jicofo connects to JVB (Videobridge SFU)
+   ▼
+8. JVB opens encrypted DTLS-SRTP media stream on UDP Port 10000
+   ▼
+9. Live HD Video & Audio streams flow smoothly between all attendees!
 ```
 
 ---
 
-## 💡 Selective Forwarding Unit (SFU) vs Mesh P2P
+## 💡 Why SFU (Videobridge) is Better than Mesh P2P
 
-Unity Meet is optimized to use **SFU mode** (`p2p.enabled = false`):
-* **No P2P Connection Timeouts:** Bypasses direct peer-to-peer ICE negotiation delays.
-* **Scalability:** Each participant sends 1 video stream to JVB and receives only active speaker streams, reducing CPU and bandwidth consumption.
+* **Mesh (P2P):** If you are in a 5-person call, your laptop must send 4 separate video streams and receive 4 streams. Your computer overheats and slows down.
+* **SFU (Unity Meet):** You send **only 1 video stream** to the JVB server. The server forwards it to everyone else. Your computer stays fast and cool, supporting 50+ participants easily!
