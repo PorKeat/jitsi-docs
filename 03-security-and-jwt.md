@@ -4,6 +4,30 @@ This guide explains all security layers, encryption methods, and access controls
 
 ---
 
+## 🌟 The 5 Core Security Pillars
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   🌟 5 CORE SECURITY PILLARS                           │
+├────┬─────────────────────────────┬─────────────────────────────────────┤
+│ 1  │ 🔒 DTLS-SRTP Media Transit  │ Encrypts video/audio over internet  │
+│ 2  │ 🛡️ True E2EE (Client-Level) │ Server CANNOT see or decode video   │
+│ 3  │ 🔑 HS256 JWT Token Gate     │ Only authorized users can join      │
+│ 4  │ 🔗 AES-256-GCM Secure Links │ Hides real room names in URL links  │
+│ 5  │ ⚡ Host Authority & Ban Lock │ Kick users & permanently end rooms  │
+└────┴─────────────────────────────┴─────────────────────────────────────┘
+```
+
+| # | Core Security | What It Does (Simple English) | Who Can See It? |
+|---|---|---|---|
+| **1** | **🔒 DTLS-SRTP Media Encryption** | Encrypts all live camera and microphone streams across the internet (UDP `10000`). | Attendees and the Jitsi server (Safe from Wi-Fi hackers & ISPs). |
+| **2** | **🛡️ True E2EE (End-to-End Encryption)** | Extra browser-level lock on raw video frames before sending. | **ONLY You and other attendees.** (Even the server administrator CANNOT see it). |
+| **3** | **🔑 HS256 JWT Token Gatekeeper** | Creates a digitally signed ticket for every user joining the call. | Verified by Prosody before letting anyone in; assigns Host vs Guest role. |
+| **4** | **🔗 AES-256-GCM Encrypted Links** | Turns real meeting room names into secret, unguessable invite URLs. | Only people who have the link and decryption key. |
+| **5** | **⚡ Host Authority & "End for All"** | Host can kick disruptive people, ban them, and permanently destroy the room. | Host has complete meeting control. |
+
+---
+
 ## 🔒 DTLS-SRTP vs True E2EE: What Is the Difference?
 
 | Feature | **DTLS-SRTP** (In-Transit Encryption) | **True E2EE** (End-to-End Encryption) |
@@ -13,20 +37,6 @@ This guide explains all security layers, encryption methods, and access controls
 | **Can ISP / Hackers on Wi-Fi see it?** | ❌ **No (100% Protected)** | ❌ **No (100% Protected)** |
 | **Can the Server Administrator see it?** | 🖥️ Yes (Server decrypts packet headers to route video) | ❌ **No (Mathematically impossible)** |
 | **When to Use It?** | Standard video meetings (supports 50+ people with high efficiency). | Ultra-confidential private conversations. |
-
----
-
-## 🛡️ The 7 Security Layers (Who Can See What?)
-
-| Security Layer | Technology | How It Works (Simple English) | Who Can Access It? |
-| :--- | :--- | :--- | :--- |
-| **1. Video & Audio Security** | **DTLS-SRTP (UDP 10000)** | Encrypts all live camera and microphone packets over the internet. | Attendees & the Jitsi server. Blocked for all outside sniffers. |
-| **2. Entry Gatekeeper** | **HS256 JWT Tokens** | A digital ticket signed by the FastAPI backend specifying if you are a Host or a Guest. | Prosody XMPP verifies the digital signature before opening the room. |
-| **3. Invite Link Protection** | **AES-256-GCM (AEAD)** | Hides real meeting names inside random-looking secure links with a 12-byte Nonce. | Only users who click the invite link and possess the decryption key. |
-| **4. Host Authority Key** | **Ephemeral Secret (`sec_<hex>`)** | A private key stored in your browser tab (`sessionStorage`). Cleared on tab close. | Only the meeting creator's browser. |
-| **5. Container Hardening** | **Non-Root Docker User** | Web container runs as an unprivileged user (`nextjs` UID: 1001) with zero root powers. | Protects the host operating system from container breakout attacks. |
-| **6. Lobby Gatekeeper** | **Knocking Waiting Room** | Guests must knock outside until the host clicks "Approve". | Host controls admission; guests cannot sneak in. |
-| **7. Ban Enforcement** | **Server-Side Blacklist** | Kicked disruptive users are added to a ban registry. | Banned users are blocked from re-entering. |
 
 ---
 
