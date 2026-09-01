@@ -1,6 +1,6 @@
 # 03. Security, Encryption & Access Control
 
-This guide lists **all 12 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** in plain English.
+This guide lists **all 14 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** in plain English.
 
 ---
 
@@ -39,6 +39,8 @@ This guide lists **all 12 implemented security mechanisms**, highlighting the **
 | **10**| **🏰 Private Docker Network (DMZ)** | Backend microservices (`api`, `prosody`, `jicofo`) talk privately inside `meet.jitsi` | Direct port exposure, External API attacks |
 | **11**| **🚪 Knocking Lobby Mode** | Guests must knock and wait in a waiting room until the host approves them | "Zoombombing", Uninvited intrusions |
 | **12**| **🧹 Input Sanitization (Regex & Pydantic)** | Restricts room names and inputs to safe alphanumeric sets | XSS, SQL/NoSQL Injection, Path Traversal |
+| **13**| **🚦 In-Memory Rate Limiting** | Limits `/api/create-room` (20/min) and `/api/token` (60/min) per IP | API Flooding, DDoS, Room creation spam |
+| **14**| **🌐 Dynamic CORS Whitelist** | Restricts cross-origin API requests to verified domains via `CORS_ORIGINS` | Cross-site unauthorized API abuse |
 
 ---
 
