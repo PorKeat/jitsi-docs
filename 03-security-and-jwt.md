@@ -1,30 +1,44 @@
 # 03. Security, Encryption & Access Control
 
-This guide explains all security layers, encryption methods, and access controls in Unity Meet in **simple, plain English**.
+This guide lists **all 12 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** in plain English.
 
 ---
 
-## 🌟 The 5 Core Security Pillars
+## 🌟 Top 5 Most Critical Core Security Pillars
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   🌟 5 CORE SECURITY PILLARS                           │
+│               🌟 TOP 5 MOST CRITICAL CORE SECURITY PILLARS             │
 ├────┬─────────────────────────────┬─────────────────────────────────────┤
-│ 1  │ 🔒 DTLS-SRTP Media Transit  │ Encrypts video/audio over internet  │
-│ 2  │ 🛡️ True E2EE (Client-Level) │ Server CANNOT see or decode video   │
-│ 3  │ 🔑 HS256 JWT Token Gate     │ Only authorized users can join      │
-│ 4  │ 🔗 AES-256-GCM Secure Links │ Hides real room names in URL links  │
-│ 5  │ ⚡ Host Authority & Ban Lock │ Kick users & permanently end rooms  │
+│ 1  │ ⭐ 🔒 DTLS-SRTP Media       │ Encrypts live video/audio in transit│
+│ 2  │ ⭐ 🛡️ True E2EE             │ Server CANNOT see or decode video   │
+│ 3  │ ⭐ 🔑 HS256 JWT Token Gate  │ Only authorized users can join      │
+│ 4  │ ⭐ 🔗 AES-256-GCM Links     │ Hides real room names in URL links  │
+│ 5  │ ⭐ ⚡ Host Authority & Lock │ Kick users & permanently end rooms  │
 └────┴─────────────────────────────┴─────────────────────────────────────┘
 ```
 
-| # | Core Security | What It Does (Simple English) | Who Can See It? |
+| # | Security Feature | What It Does (Simple English) | Who Can See It? | Priority |
+|---|---|---|---|---|
+| **1** | **⭐ 🔒 DTLS-SRTP Media Encryption** | Encrypts all live camera and microphone streams across the internet (UDP `10000`). | Attendees & Jitsi server (Safe from Wi-Fi hackers & ISPs). | **CRITICAL** |
+| **2** | **⭐ 🛡️ True E2EE (End-to-End)** | Extra browser-level lock on raw video frames before sending. | **ONLY You and other attendees.** (Even server admin CANNOT see it). | **CRITICAL** |
+| **3** | **⭐ 🔑 HS256 JWT Token Gatekeeper** | Creates a digitally signed ticket for every user joining the call. | Verified by Prosody before letting anyone in; assigns Host vs Guest role. | **CRITICAL** |
+| **4** | **⭐ 🔗 AES-256-GCM Encrypted Links** | Turns real meeting room names into secret, unguessable invite URLs. | Only people who have the link and decryption key. | **CRITICAL** |
+| **5** | **⭐ ⚡ Host Authority & "End for All"** | Host can kick disruptive people, ban them, and permanently destroy the room. | Host has complete meeting control. | **CRITICAL** |
+
+---
+
+## 🛡️ Full List of Additional Security Layers
+
+| # | Additional Security Feature | What It Does | Threat Prevented |
 |---|---|---|---|
-| **1** | **🔒 DTLS-SRTP Media Encryption** | Encrypts all live camera and microphone streams across the internet (UDP `10000`). | Attendees and the Jitsi server (Safe from Wi-Fi hackers & ISPs). |
-| **2** | **🛡️ True E2EE (End-to-End Encryption)** | Extra browser-level lock on raw video frames before sending. | **ONLY You and other attendees.** (Even the server administrator CANNOT see it). |
-| **3** | **🔑 HS256 JWT Token Gatekeeper** | Creates a digitally signed ticket for every user joining the call. | Verified by Prosody before letting anyone in; assigns Host vs Guest role. |
-| **4** | **🔗 AES-256-GCM Encrypted Links** | Turns real meeting room names into secret, unguessable invite URLs. | Only people who have the link and decryption key. |
-| **5** | **⚡ Host Authority & "End for All"** | Host can kick disruptive people, ban them, and permanently destroy the room. | Host has complete meeting control. |
+| **6** | **🌐 TLS 1.3 / HTTPS & WSS** | Encrypts all web requests, XMPP signaling, and whiteboard collaboration traffic | Eavesdropping, MITM on web data |
+| **7** | **🗝️ Ephemeral Host Secrets (`sec_<hex>`)** | Stores private host key strictly in tab memory (`sessionStorage`), cleared on tab close | Host impersonation, Replay attacks |
+| **8** | **🚫 Server-Side Ban Blacklist** | When a host kicks a user, the backend (`/api/kick`) bans them from rejoining | Disruptive attendee return, Ban evasion |
+| **9** | **🐳 Non-Root Docker Hardening** | Next.js container runs as unprivileged user (`USER nextjs` UID: 1001) | Container escape, Root privilege escalation |
+| **10**| **🏰 Private Docker Network (DMZ)** | Backend microservices (`api`, `prosody`, `jicofo`) talk privately inside `meet.jitsi` | Direct port exposure, External API attacks |
+| **11**| **🚪 Knocking Lobby Mode** | Guests must knock and wait in a waiting room until the host approves them | "Zoombombing", Uninvited intrusions |
+| **12**| **🧹 Input Sanitization (Regex & Pydantic)** | Restricts room names and inputs to safe alphanumeric sets | XSS, SQL/NoSQL Injection, Path Traversal |
 
 ---
 
