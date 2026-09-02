@@ -1,6 +1,6 @@
 # 03. Security, Encryption & Access Control
 
-This guide lists **all 15 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** in plain English.
+This guide lists **all 18 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** and the **Moderator Web Security Controls** in plain English.
 
 ---
 
@@ -42,6 +42,20 @@ This guide lists **all 15 implemented security mechanisms**, highlighting the **
 | **13**| **🚦 In-Memory Rate Limiting** | Limits `/api/create-room` (20/min) and `/api/token` (60/min) per IP | API Flooding, DDoS, Room creation spam |
 | **14**| **🌐 Dynamic CORS Whitelist** | Restricts cross-origin API requests to verified domains via `CORS_ORIGINS` | Cross-site unauthorized API abuse |
 | **15**| **🔒 Host-Only Recording Governance** | Guests are cryptographically blocked from recording via JWT claims | Unauthorized meeting capture & data theft |
+| **16**| **🛡️ `Permissions-Policy` Capture Lock** | Enforces `display-capture=(self)` and `X-Frame-Options: SAMEORIGIN` | Malicious browser extension capture, Clickjacking |
+| **17**| **🔒 Right-Click & Selection Lockdown** | Disables context menu and element selection across the meeting stage | Unauthorized video asset extraction & scraping |
+| **18**| **🎛️ Live Moderator Governance Panel** | Real-time On/Off toggles in Settings for recording, screen share & content lock | Rogue participant abuse, meeting disruption |
+
+---
+
+## 🎛️ Live Moderator Governance & Security Controls
+
+The meeting host has real-time control over meeting security directly inside the **Settings Modal (Security Tab)**:
+
+1. **Guest Recording Control:** Turn On/Off whether participants can see the record button and capture the session.
+2. **Guest Screen Sharing Control:** Turn On/Off whether participants can share their screen or slides.
+3. **Right-Click & Selection Protection:** Disables right-click menus, text selection, and video element inspection.
+4. **Instant Synchronization:** When the host changes a security toggle, the change is saved via `/api/room-settings` and instantly broadcast to all participants.
 
 ---
 
