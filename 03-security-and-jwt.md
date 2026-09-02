@@ -1,6 +1,6 @@
 # 03. Security, Encryption & Access Control
 
-This guide lists **all 14 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** in plain English.
+This guide lists **all 16 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** and the **WebRTC Real-Time DRM Content Protection Layer** in plain English.
 
 ---
 
@@ -41,6 +41,18 @@ This guide lists **all 14 implemented security mechanisms**, highlighting the **
 | **12**| **🧹 Input Sanitization (Regex & Pydantic)** | Restricts room names and inputs to safe alphanumeric sets | XSS, SQL/NoSQL Injection, Path Traversal |
 | **13**| **🚦 In-Memory Rate Limiting** | Limits `/api/create-room` (20/min) and `/api/token` (60/min) per IP | API Flooding, DDoS, Room creation spam |
 | **14**| **🌐 Dynamic CORS Whitelist** | Restricts cross-origin API requests to verified domains via `CORS_ORIGINS` | Cross-site unauthorized API abuse |
+| **15**| **💧 WebRTC Dynamic Watermark (DRM)** | Forensic overlay of attendee Name, Email, and live UTC Timestamp | Screen recording leaks, External phone cameras |
+| **16**| **🔒 Host-Only Recording Governance** | Guests are cryptographically blocked from recording via JWT claims | Unauthorized meeting capture & data theft |
+
+---
+
+## 💧 WebRTC Real-Time DRM & Forensic Watermarking
+
+Unity Meet uses the same **Gold Standard** content protection used by **Zoom Enterprise** and **Microsoft Teams Premium**:
+
+1. **Forensic Video Watermark:** A subtle, semi-transparent (`opacity-18`) tiled overlay displays the viewer's **Name, Email/ID, and live ticking UTC Timestamp**.
+2. **Anti-Leak Traceability:** If someone uses an external phone camera or screen recording tool, their identity is irreversibly stamped onto the captured video.
+3. **Host-Only Recording Lock:** The FastAPI backend signs JWT tokens where `features.recording` is `false` for all guests, ensuring only the meeting host can record.
 
 ---
 
@@ -74,19 +86,20 @@ This guide lists **all 14 implemented security mechanisms**, highlighting the **
 {
   "aud": "my_jitsi_app",
   "iss": "my_jitsi_app",
-  "sub": "*",
-  "room": "room_name",
+  "sub": "test-room",
+  "room": "test-room",
   "exp": 1788280000,
   "context": {
     "user": {
       "name": "Alex",
       "moderator": true,
       "role": "moderator"
+    },
+    "features": {
+      "recording": true,
+      "livestreaming": true,
+      "screen-sharing": true
     }
   }
 }
 ```
-
-* **`room`**: The exact meeting room name (prevents token reuse in other rooms).
-* **`moderator: true`**: Confirms host powers (mute all, kick, end meeting).
-* **`exp`**: Expiration timestamp so old tokens cannot be reused.
