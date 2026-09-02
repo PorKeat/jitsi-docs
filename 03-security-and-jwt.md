@@ -1,6 +1,6 @@
 # 03. Security, Encryption & Access Control
 
-This guide lists **all 16 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** and the **WebRTC Real-Time DRM Content Protection Layer** in plain English.
+This guide lists **all 17 implemented security mechanisms**, highlighting the **Top 5 Most Critical Security Pillars** and the **WebRTC Real-Time DRM Content Protection Layer** in plain English.
 
 ---
 
@@ -41,8 +41,9 @@ This guide lists **all 16 implemented security mechanisms**, highlighting the **
 | **12**| **🧹 Input Sanitization (Regex & Pydantic)** | Restricts room names and inputs to safe alphanumeric sets | XSS, SQL/NoSQL Injection, Path Traversal |
 | **13**| **🚦 In-Memory Rate Limiting** | Limits `/api/create-room` (20/min) and `/api/token` (60/min) per IP | API Flooding, DDoS, Room creation spam |
 | **14**| **🌐 Dynamic CORS Whitelist** | Restricts cross-origin API requests to verified domains via `CORS_ORIGINS` | Cross-site unauthorized API abuse |
-| **15**| **💧 WebRTC Dynamic Watermark (DRM)** | Forensic overlay of attendee Name, Email, and live UTC Timestamp | Screen recording leaks, External phone cameras |
+| **15**| **💧 WebRTC Dynamic Watermark (DRM)** | Dense forensic overlay of attendee Name, Email, and live UTC Timestamp | Screen recording leaks, External phone cameras |
 | **16**| **🔒 Host-Only Recording Governance** | Guests are cryptographically blocked from recording via JWT claims | Unauthorized meeting capture & data theft |
+| **17**| **🛡️ Anti-Screenshot Privacy Shield** | Auto-blackouts video when snipping tools, Cmd+Shift+4, or window blur is active | OS screenshot snipping, background screen grabs |
 
 ---
 
@@ -50,9 +51,10 @@ This guide lists **all 16 implemented security mechanisms**, highlighting the **
 
 Unity Meet uses the same **Gold Standard** content protection used by **Zoom Enterprise** and **Microsoft Teams Premium**:
 
-1. **Forensic Video Watermark:** A subtle, semi-transparent (`opacity-18`) tiled overlay displays the viewer's **Name, Email/ID, and live ticking UTC Timestamp**.
+1. **High-Density Forensic Video Watermark:** A 60-tile semi-transparent overlay displays the viewer's **Name, Email/ID, and live ticking UTC Timestamp** across every quadrant of the screen.
 2. **Anti-Leak Traceability:** If someone uses an external phone camera or screen recording tool, their identity is irreversibly stamped onto the captured video.
-3. **Host-Only Recording Lock:** The FastAPI backend signs JWT tokens where `features.recording` is `false` for all guests, ensuring only the meeting host can record.
+3. **Active Anti-Screenshot Shield:** When a user opens a screenshot/snipping tool (like `Cmd+Shift+4` or Windows Snipping Tool) or switches window focus, the app instantly blackouts the video stage with a privacy shield.
+4. **Host-Only Recording Lock:** The FastAPI backend signs JWT tokens where `features.recording` is `false` for all guests, ensuring only the meeting host can record.
 
 ---
 
