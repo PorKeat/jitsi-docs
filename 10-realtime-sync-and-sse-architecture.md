@@ -49,7 +49,14 @@ When an event mutation occurs in the Calendar Go API (`CreateEvent`, `UpdateEven
    }
    ```
 
-### B. Calendar Go API Streaming Endpoint (`/api/events/stream`)
+### B. Native WebSocket Real-Time Hub (`/api/events/ws`)
+For maximum throughput and instantaneous bidirectional capability, the Calendar Go API features a high-performance **Gorilla WebSocket Hub**:
+* **Endpoint:** `wss://calendar.unity-workspace.com/api/events/ws` (and `/ws`)
+* **Cluster Pub/Sub Synchronization:** Each API pod maintains an active connection pool. When any replica mutates an event, Valkey Pub/Sub broadcasts to all pods, which instantly forward the message to all connected WebSockets.
+* **Ping / Pong Heartbeat:** Automated 25-second ping ticker prevents connection drops across edge proxies and firewalls.
+* **Auto-Fallback:** Client frontends in both Meet and Calendar automatically negotiate WebSocket connections with zero-delay fallback to SSE and polling.
+
+### C. Calendar Go API Streaming Endpoint (`/api/events/stream`)
 * Connects directly to Valkey via `h.valkey.Subscribe(ctx, "unity:events:stream")`.
 * Emits HTTP/2 SSE chunks with headers:
   * `Content-Type: text/event-stream`
