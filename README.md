@@ -33,6 +33,7 @@
 | [**07. Configuration & Reference**](./07-config-and-scripts-reference.md) | Config & Architecture Guide | Detailed breakdown of environment variables, FastAPI JWT signing, and directory layout. |
 | [**08. Next.js Integration & Customization**](./08-nextjs-integration-and-customization.md) | Frontend Dev & SDK Guide | Next.js 16 App Router, Turbopack, dynamic SDK imports, IFrame API commands/events, custom toolbar, Green Room, and Whiteboard. |
 | [**09. Valkey Cache & Distributed State**](./09-valkey-cache-and-distributed-state.md) | High-Performance In-Memory Cache | Distributed room state, knocking lobby sync, rate limiting, and Unity Calendar holiday & event query acceleration. |
+| [**10. Real-Time Sync & SSE Architecture**](./10-realtime-sync-and-sse-architecture.md) | Push Synchronization & Zero-Cache | Valkey Pub/Sub channel, Server-Sent Events (SSE) streaming, zero-cache invalidation, and real-time meeting sync. |
 
 ---
 
