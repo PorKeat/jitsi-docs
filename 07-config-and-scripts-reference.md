@@ -22,6 +22,10 @@ This guide details the production Helm configuration parameters (`values-prod.ya
 | **Jitsi** | `jitsi-meet.jvb.replicaCount` | `2` | 1 JVB per physical node (`hostPort: 10000/udp`) |
 | | `jitsi-meet.jvb.useHostNetwork` | `true` | Direct host network binding for WebRTC media |
 | | `jitsi-meet.web.lifecycle.postStart` | Script | Patches ConnectionQuality stats TypeError in `lib-jitsi-meet` |
+| **Vault** | `vault.enabled` | `true` | Injects HashiCorp Vault Agent sidecar (`/vault/secrets`) |
+| | `vault.role` | `unity-meet-api` | Vault Kubernetes auth role name |
+| | `vault.tlsCaSecret` | `vault-ca-cert` | Kubernetes Secret with Vault internal root CA |
+| | `vault.secretPath` | `secret/data/unity-workspace/meet/api` | KV-v2 path for dynamic in-memory credential delivery |
 
 ---
 
