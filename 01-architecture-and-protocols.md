@@ -17,6 +17,7 @@ This guide explains the complete architecture, networking protocols, and technic
 | **AES-256-GCM** | Military-grade authenticated encryption for links. | Scrambles the real room name with a 12-byte random number and 16-byte tag. | Only users with the invite link and decryption key can see the real room name. |
 | **ICE / STUN / TURN** | Connection pathfinders through routers & firewalls. | STUN finds your public IP address; ICE tests the fastest path; TURN relays if blocked. | Used to establish peer-to-server WebRTC network channels. |
 | **WebSockets (WSS)** | An open, two-way communication pipe in your browser. | Keeps a permanent connection open so chat, signaling, and whiteboard draw in real-time. | Encrypted under TLS 1.3 HTTPS/WSS. |
+| **Vault Agent Sidecar** | In-memory secrets courier for microservices. | Injects database passwords & JWT keys directly into RAM (`tmpfs`). Never writes secrets to disk or etcd. | Microservice container only. Completely shielded from Git & external callers. |
 
 ---
 
@@ -24,6 +25,7 @@ This guide explains the complete architecture, networking protocols, and technic
 
 | Service | Pod / Component | Role (Simple Explanation) | Tech Stack |
 | :--- | :--- | :--- | :--- |
+| **Secrets Engine** | `vault-injector` / `vault-agent` | Injects JWT keys & DB credentials into in-memory `tmpfs` volume (`/vault/secrets/`). | HashiCorp Vault 2.1.0, Mutating Webhook |
 | **Ingress Gateway** | Traefik v3 IngressRoute | Routes traffic from MetalLB VIP (`10.1.18.200`) to microservices with SSL & WebSockets. | Traefik v3, MetalLB, Let's Encrypt |
 | **Web Portal UI** | `unity-meet-web` (Port 3000) | Full Next.js 16 UI with dashboard, green room, smooth stage zoom, and meeting frame. | Next.js 16 (Turbopack), React 19, Tailwind CSS |
 | **API Microservice**| `unity-meet-api` (Port 8000) | High-performance Go service signing JWTs, encrypting links, room locks, and bans. | Go (Golang) 1.22, Gin/Chi, HMAC-SHA256, AES-256-GCM |

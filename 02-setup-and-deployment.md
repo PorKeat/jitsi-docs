@@ -57,6 +57,7 @@ ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10 "kubectl rollout restart deplo
   ```bash
   perl -pi -e "s/\"stats\"===t\.type/t&&\"stats\"===t\.type/g" /usr/share/jitsi-meet/libs/lib-jitsi-meet.min.js
   ```
+* **Vault Agent Sidecar Injection:** Automatically injects `vault-agent-init` and `vault-agent` sidecars into API pods when `vault.enabled: true`. Secrets are rendered exclusively in-memory (`tmpfs`) at `/vault/secrets/credentials.env` without touching etcd or disk.
 * **Custom Assets Mount:** Next-gen watermark, `interface_config.js`, and `head.html` mounted cleanly from ConfigMaps.
 
 ---
