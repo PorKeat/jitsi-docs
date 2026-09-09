@@ -135,6 +135,60 @@ kubectl rollout status deployment/unity-meet-web -n jitsi
 
 ---
 
+### Incident 4: HashiCorp Vault Agent Sidecar & Secret Rotation Runbook
+
+#### 1. Inspecting Vault Agent Injected Credentials
+To verify that credentials are mounting purely into in-memory `tmpfs` without persistence:
+```bash
+# Verify pod has 2/2 containers running (api + vault-agent)
+kubectl get pods -n jitsi -l app.kubernetes.io/component=api
+
+# Inspect in-memory secrets file inside running pod
+kubectl exec -n jitsi deploy/unity-meet-api -c api -- ls -la /vault/secrets
+kubectl exec -n jitsi deploy/unity-meet-api -c api -- cat /vault/secrets/credentials.env
+```
+
+#### 2. Rotating Secrets in HashiCorp Vault (Zero Git Changes)
+To rotate the JWT signing key or database password without modifying Helm charts or Git:
+```bash
+# Connect to Vault Host (10.1.18.8)
+ssh -i ~/.ssh/unity-workspace-key root@10.1.18.8
+
+# Authenticate with Vault CLI
+export VAULT_TOKEN="<admin-token>"
+export VAULT_CACERT="/opt/vault/tls/vault-ca.crt"
+export VAULT_ADDR="https://127.0.0.1:8200"
+
+# Put new secret values
+vault kv put secret/unity-workspace/meet/api \
+  jwt_app_id="unity_meet_enterprise" \
+  jwt_app_secret="<new-secure-secret-key>" \
+  database_url="postgres://postgres:<new-password>@unity-meet-postgres:5432/unity_meet?sslmode=disable"
+```
+
+#### 3. Triggering Zero-Downtime Rolling Update
+Once Vault is updated, restart the deployment so Vault Agent fetches the new version:
+```bash
+# On K8s Control Plane (10.1.18.10)
+kubectl rollout restart deployment/unity-meet-api -n jitsi
+kubectl rollout status deployment/unity-meet-api -n jitsi
+```
+
+#### 4. Troubleshooting Vault Agent Webhook / Auth Failures
+If API pods show `Init:0/1` or `CrashLoopBackOff`:
+```bash
+# Check init container logs (retrieves secret at startup)
+kubectl logs deploy/unity-meet-api -n jitsi -c vault-agent-init
+
+# Check sidecar logs (keeps secrets refreshed)
+kubectl logs deploy/unity-meet-api -n jitsi -c vault-agent
+
+# Verify Kubernetes API TokenReview proxy on 10.1.18.10:8443
+systemctl status k8s-apiserver-proxy.service
+```
+
+---
+
 ## 💻 Part 3: Local Docker Compose Operations
 
 ```bash

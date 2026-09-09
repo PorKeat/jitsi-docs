@@ -15,6 +15,7 @@ This guide lists **all 18 implemented security mechanisms**, highlighting the **
 │ 3  │ ⭐ 🔑 HS256 JWT Token Gate  │ Only authorized users can join      │
 │ 4  │ ⭐ 🔗 AES-256-GCM Links     │ Hides real room names in URL links  │
 │ 5  │ ⭐ ⚡ Host Authority & Lock │ Kick users & permanently end rooms  │
+│ 6  │ ⭐ 🏛️ Vault Agent Sidecar   │ In-memory tmpfs secrets (Zero etcd) │
 └────┴─────────────────────────────┴─────────────────────────────────────┘
 ```
 
@@ -25,6 +26,7 @@ This guide lists **all 18 implemented security mechanisms**, highlighting the **
 | **3** | **⭐ 🔑 HS256 JWT Token Gatekeeper** | Creates a digitally signed ticket for every user joining the call. | Verified by Prosody before letting anyone in; assigns Host vs Guest role. | **CRITICAL** |
 | **4** | **⭐ 🔗 AES-256-GCM Encrypted Links** | Turns real meeting room names into secret, unguessable invite URLs. | Only people who have the link and decryption key. | **CRITICAL** |
 | **5** | **⭐ ⚡ Host Authority & "End for All"** | Host can kick disruptive people, ban them, and permanently destroy the room. | Host has complete meeting control. | **CRITICAL** |
+| **6** | **⭐ 🏛️ Vault Agent Sidecar Injection** | Delivers database credentials & JWT keys into in-memory `tmpfs` volume (`/vault/secrets/credentials.env`). Never touches disk or etcd. | Strictly internal to the microservice container memory. | **CRITICAL** |
 
 ---
 
@@ -106,3 +108,22 @@ The meeting host has real-time control over meeting security directly inside the
   }
 }
 ```
+
+---
+
+## 🏛️ HashiCorp Vault Agent Sidecar Integration
+
+To achieve maximum enterprise security and eliminate plaintext secrets from Kubernetes etcd, Git repositories, and Helm values, Unity Meet integrates **HashiCorp Vault Agent Sidecar Injection**:
+
+### 1. Zero Secret Persistence (`tmpfs`)
+Unlike standard Kubernetes Secrets that persist base64-encoded strings on disk inside etcd, the Vault Agent sidecar injects credentials directly into an in-memory `tmpfs` volume at `/vault/secrets/credentials.env`. When a pod terminates, the memory is purged instantly without leaving any trace on physical disk storage.
+
+### 2. Dual-Mode Go Credential Loading
+The Go microservice backend implements an intelligent configuration loader:
+- **Mode 1 (Production / Kubernetes):** The API detects `/vault/secrets/credentials.env` populated by the Vault Agent sidecar and parses `JWT_APP_ID`, `JWT_APP_SECRET`, and `DATABASE_URL` directly into memory.
+- **Mode 2 (Local / Staging):** If the file does not exist, it falls back seamlessly to standard environment variables (`os.Getenv`), preserving full backward compatibility for local Docker Compose development.
+
+### 3. Kubernetes ServiceAccount Authentication Bridge
+- Pods authenticate with Vault using ephemeral projected Kubernetes ServiceAccount tokens (`unity-meet-api`).
+- Vault validates tokens against the Kubernetes API server using the `TokenReview` API via a secure proxy on port `8443`.
+- Vault issues a short-lived token restricted to the least-privilege policy `unity-meet-api`, granting read-only access to `secret/data/unity-workspace/meet/api`.

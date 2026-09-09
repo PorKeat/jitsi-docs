@@ -76,6 +76,8 @@ These ports operate within the private LAN/VLAN (`10.1.18.0/24`). They **must NO
 | **`8472`** | `UDP` | Cluster Nodes | Cluster Nodes (`.10`, `.11`) | CNI Pod Network Overlay (Cilium / VXLAN cross-node encapsulation). |
 | **`9500` – `9504`**| `TCP` | Cluster Nodes | Cluster Nodes (`.10`, `.11`) | Longhorn Distributed CSI Engine (volume replication & instance managers for persistent disks). |
 | **`8080` / `443`** | `TCP` | Meet Web / API Pods | Keycloak VM (`auth.unity-workspace.com` / `10.1.18.8`) | OpenID Connect / OAuth2 token validation, user authentication, and profile sync. |
+| **`8200`** | `TCP` | Vault Agent Injector / Sidecars | Vault Host (`10.1.18.8:8200`) | HTTPS / mTLS API for token login and dynamic secret retrieval. |
+| **`8443`** | `TCP` | Vault Host (`10.1.18.8`) | `jitsi-meet2` (`10.1.18.10:8443`) | K8s API Server TokenReview proxy for Vault to validate ServiceAccount JWT tokens. |
 | **`5434`** | `TCP` | Meet Web BFF | Calendar Service | Calendar event query acceleration and meeting synchronization. |
 | **`22`** | `TCP` | Admin VPN / Bastion | All Nodes (`10.1.18.10`, `10.1.18.11`)| SSH administrative access, GitOps deployments, and node maintenance. |
 
