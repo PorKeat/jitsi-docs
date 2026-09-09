@@ -39,3 +39,21 @@ Unity Meet operates on a **Pure Next.js Frontend + Jitsi WebRTC Backend Architec
 * **Palette:** Purple (`#a855f7`), Blue (`#3b82f6`), Green (`#10b981`), Red (`#ef4444`), Orange (`#f59e0b`), White (`#ffffff`).
 * **Export:** 1-click PNG image download of the board canvas.
 * **Zero Dependency:** Operates directly in Next.js without requiring external backend relay services or Prosody plugins.
+
+---
+
+## 🖥️ Screen Sharing & Dynamic Stage Controls
+
+When an attendee shares their screen or presentation, Unity Meet activates a dedicated GPU-accelerated stage experience:
+
+1. **GPU-Accelerated Smooth Zoom:**
+   * Uses CSS `transform: scale(n)` with hardware acceleration (`will-change: transform`, `transform: translateZ(0)`).
+   * Eliminates jitter and tearing when zooming in on small text, code editors, or complex diagrams (from 1.0x up to 3.0x zoom).
+2. **1-Click Fit / Fill Toggle:**
+   * **Fit to Screen (`contain`):** Preserves 100% of the presenter's screen without cropping or clipping content.
+   * **Fill Stage (`cover`):** Expands the feed to occupy the full stage viewport for immersive media viewing.
+3. **Floating Stage Controls Capsule:**
+   * Positioned as a floating pill with `backdrop-blur-md` and high z-index.
+   * Features Zoom In (`+`), Zoom Out (`-`), Aspect Toggle (`Fit`/`Fill`), and Reset (`1x`) buttons.
+   * Discretely dims during presentation to avoid obscuring presenter slides.
+

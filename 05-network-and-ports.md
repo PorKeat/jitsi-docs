@@ -1,40 +1,66 @@
 # 05. Network, Port Allocation & Firewall Rules
 
-This document outlines the network ports and firewall requirements for Unity Meet.
+This document outlines the network topology, port allocations, and firewall requirements for Unity Meet in **Production Kubernetes** and local environments.
+
+---
+
+## 🏛️ Production Kubernetes Network Topology
+
+In the production cluster, traffic is routed through **MetalLB** to **Traefik v3**, with high-throughput WebRTC media routed directly to physical nodes via `hostPort`.
+
+```
+Clients (Web Browsers)
+   │
+   ├─► HTTPS (443/TCP) ──► MetalLB VIP: 10.1.18.200 ──► Traefik v3 IngressRoute
+   │                        │
+   │                        ├── /api/calendar, /api/room-schedule ──► unity-meet-web (Port 3000)
+   │                        ├── /api/*, /health ──► unity-meet-api (Port 8000)
+   │                        ├── /_next, /meeting, /join, / ──► unity-meet-web (Port 3000)
+   │                        └── / (Jitsi WebRTC Assets & WSS) ──► jitsi-meet-web (Port 80)
+   │
+   └─► WebRTC Media (10000/UDP) ──► Direct Physical Node Binding (hostPort)
+                            ├── Node 2 (jitsi-meet2): 10.1.18.10:10000 UDP
+                            └── Node 3 (jitsi-meet3): 10.1.18.11:10000 UDP
+```
+
+### Key Kubernetes Network Details
+1. **MetalLB Virtual IP (`10.1.18.200`):** Fronted by Traefik v3. Manages TLS termination, WebSocket upgrades (`/xmpp-websocket`), and HTTP-to-HTTPS redirection.
+2. **JVB HostPort UDP 10000:** JVB uses `useHostNetwork: true` to eliminate container NAT overhead. Each physical node can host at most **one** JVB instance on UDP port 10000. With 2 active worker nodes (`jitsi-meet2` & `jitsi-meet3`), `replicaCount: 2` is the cluster capacity limit.
+3. **Internal ClusterIP Network:**
+   * `unity-meet-api`: Port `8000` (Go microservice)
+   * `unity-meet-valkey`: Port `6379` (In-memory datastore)
+   * `unity-meet-postgres`: Port `5432` (PostgreSQL)
+   * `unity-meet-jitsi-meet-prosody`: Port `5222` (C2S XMPP) and `5347` (Component)
+   * `unity-meet-jitsi-meet-web`: Port `80` (Static assets & Nginx internal proxy)
 
 ---
 
 ## 🌐 Port Allocation Table
 
-| Port | Protocol | Service | Container | Public Exposure | Description |
+| Port | Protocol | Scope | Service / Pod | Public Exposure | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`3000`** | `TCP` | Next.js Web App | `portal` | **Public** | Unity Meet landing page, room generator, and meeting UI |
-| **`8443`** | `TCP` | Nginx HTTPS / Web | `web` | **Public** | Jitsi web static assets, BOSH (`/http-bind`), and WebSocket (`/xmpp-websocket`) |
-| **`8080`** | `TCP` | Nginx HTTP | `web` | Optional | HTTP redirect to HTTPS |
-| **`10000`**| `UDP` | JVB WebRTC Media | `jvb` | **Public (Critical)** | Encrypted DTLS-SRTP audio & video stream transport |
-| **`3002`** | `TCP` | Excalidraw Backend | `whiteboard` | **Public / Local** | WebSocket collaborative drawing relay |
-| **`4443`** | `TCP` | JVB TCP Fallback | `jvb` | Optional | TCP fallback for restrictive firewalls blocking UDP 10000 |
-| **`5222`** | `TCP` | Prosody Client C2S | `prosody` | Internal Only | Internal client-to-server XMPP communication |
-| **`5347`** | `TCP` | Prosody Component | `prosody` | Internal Only | Internal XMPP component connection for Jicofo |
+| **`443`** | `TCP` | Production VIP | Traefik v3 Ingress | **Public (`10.1.18.200:443`)** | HTTPS entrypoint for Web UI, API, and WebSockets |
+| **`80`** | `TCP` | Production VIP | Traefik v3 Ingress | **Public (`10.1.18.200:80`)** | HTTP entrypoint (redirects to HTTPS) |
+| **`10000`**| `UDP` | Physical Node | JVB Media SFU | **Public (Critical)** | Direct DTLS-SRTP audio & video stream transport |
+| **`3000`** | `TCP` | Internal / Local| Next.js Web App | Internal (ClusterIP) | React 19 / Next.js 16 Web Dashboard & Meeting Frame |
+| **`8000`** | `TCP` | Internal / Local| Go API Microservice| Internal (ClusterIP) | JWT token generation, room locks, and AES decryption |
+| **`6379`** | `TCP` | Internal | Valkey In-Memory | Internal Only | Sub-millisecond room state, rate limits, and bans |
+| **`5432`** | `TCP` | Internal | PostgreSQL DB | Internal Only | Persistent user profiles and meeting history |
+| **`5222`** | `TCP` | Internal | Prosody XMPP | Internal Only | Internal client-to-server XMPP signaling |
+| **`5347`** | `TCP` | Internal | Prosody Component | Internal Only | Internal XMPP component connection for Jicofo |
 
 ---
 
-## 🛡️ Firewall Configuration Rules (UFW / Cloud Security Groups)
+## 🛡️ Firewall Configuration Rules (UFW / Edge Router)
 
 ```bash
-# Allow Next.js Portal
-sudo ufw allow 3000/tcp
+# Allow Traefik Ingress Traffic (MetalLB VIP)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 
-# Allow Jitsi Web Interface
-sudo ufw allow 8443/tcp
-sudo ufw allow 8080/tcp
-
-# Allow Excalidraw Whiteboard Backend
-sudo ufw allow 3002/tcp
-
-# Allow WebRTC Media UDP Traffic (MANDATORY)
+# Allow WebRTC Media UDP Traffic on all cluster worker nodes (MANDATORY)
 sudo ufw allow 10000/udp
 
-# Allow WebRTC TCP Fallback
-sudo ufw allow 4443/tcp
+# Allow SSH Management (Restricted to VPN / Admin Subnet)
+sudo ufw allow 22/tcp
 ```

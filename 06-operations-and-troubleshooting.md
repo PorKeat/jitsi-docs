@@ -1,63 +1,155 @@
-# 06. Operations, CLI & Troubleshooting
+# 06. Operations, CLI & Troubleshooting Runbook
 
-Unity Meet is managed via standard Docker Compose commands.
-
----
-
-## 🚀 Standard Service Operations
-
-| Action | Command | Description |
-| :--- | :--- | :--- |
-| **Start All** | `docker compose up -d` | Starts all microservices and Next.js portal in the background. |
-| **Stop All** | `docker compose down` | Safely stops and shuts down all containers. |
-| **Restart All** | `docker compose restart` | Reboots all active services. |
-| **View Live Logs** | `docker compose logs -f` | Streams real-time container logs. |
-| **Container Status**| `docker compose ps` | Displays container health, uptime, and port mappings. |
+This guide contains operational procedures, monitoring commands, and solutions to common infrastructure and application incidents for Unity Meet.
 
 ---
 
-## 🔍 Log Inspection by Service
+## 🏛️ Part 1: Production Kubernetes & Helm Operations
 
+Connect to the primary control plane node:
 ```bash
-# View Next.js application logs
-docker compose logs -f portal
+ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10
+```
 
-# View Nginx / Web frontend logs
-docker compose logs -f web
+### 1. Cluster Status & Pod Health
+```bash
+# View all nodes and ready state
+kubectl get nodes -o wide
 
-# View XMPP Prosody signaling logs
-docker compose logs -f prosody
+# Check all pods in the 'jitsi' namespace
+kubectl get pods -n jitsi -o wide
 
-# View Jicofo focus daemon logs
-docker compose logs -f jicofo
+# Check for any non-running pods cluster-wide
+kubectl get pods -A | grep -v -E "Running|Completed"
+```
 
-# View JVB (Videobridge) media stream logs
-docker compose logs -f jvb
+### 2. Live Log Inspection
+```bash
+# Go API microservice logs
+kubectl logs -l app.kubernetes.io/component=api -n jitsi -c api -f --tail=100
+
+# Next.js 16 Web UI logs
+kubectl logs -l app.kubernetes.io/component=web -n jitsi -c web -f --tail=100
+
+# Jitsi WebRTC Web gateway & Nginx logs
+kubectl logs -l app.kubernetes.io/name=web -n jitsi -f --tail=100
+
+# JVB (Videobridge) media streams
+kubectl logs -l app.kubernetes.io/component=jvb -n jitsi -f --tail=100
+
+# Prosody XMPP signaling & JWT auth
+kubectl logs -n jitsi unity-meet-jitsi-meet-prosody-0 -f --tail=100
+
+# Valkey In-Memory datastore
+kubectl logs -l app.kubernetes.io/component=valkey -n jitsi -f --tail=100
+```
+
+### 3. Safe GitOps Deployment / Upgrade
+All Helm configuration is strictly maintained in `values-prod.yaml`:
+```bash
+cd /root/unity-meet-helm
+
+# Lint chart before applying
+helm lint . -f values-prod.yaml
+
+# Atomic rolling upgrade
+helm upgrade unity-meet . -n jitsi -f values-prod.yaml
+
+# Zero-downtime rolling restart of microservices
+kubectl rollout restart deployment/unity-meet-api deployment/unity-meet-web -n jitsi
+kubectl rollout status deployment/unity-meet-api -n jitsi
+kubectl rollout status deployment/unity-meet-web -n jitsi
 ```
 
 ---
 
-## 🛠️ Common Troubleshooting
+## 🛠️ Part 2: Production Incident Runbooks
 
-### 1. Port 3000, 8443, or 8080 Conflict
-If a port is already bound by another process:
-```bash
-lsof -i :3000
-lsof -i :8443
-# Kill conflicting PID
-kill -9 <PID>
-```
+### Incident 1: `longhorn-driver-deployer` CrashLoopBackOff & Stuck `Terminating` Pods
 
-### 2. Force Container Rebuild
-To refresh container volumes and settings:
+* **Symptom:** `longhorn-driver-deployer` crashes or remains in `CrashLoopBackOff`, and several pods across namespaces are stuck in `Terminating`.
+* **Root Cause:** When a physical node (e.g. `jitsi-meet1` / `10.1.18.9`) becomes `NotReady` or runs an incompatible runtime, kubelet does not send finalizers. DaemonSets and CSI discovery pods (such as `discover-proc-kubelet-cmdline`) stay in `Terminating` state, blocking Longhorn's deployer.
+* **Resolution:**
+  ```bash
+  # 1. List stuck terminating pods
+  kubectl get pods -A | grep Terminating
+
+  # 2. Force delete stuck pods with zero grace period
+  kubectl delete pod <stuck-pod-name> -n <namespace> --force --grace-period=0
+
+  # 3. Specifically verify longhorn-system CSI pods are cleared:
+  kubectl delete pod -n longhorn-system --force --grace-period=0 -l app=longhorn-driver-deployer
+
+  # 4. Longhorn deployer will instantly spawn fresh and reach 1/1 Running:
+  kubectl get pods -n longhorn-system -l app=longhorn-driver-deployer
+  ```
+
+---
+
+### Incident 2: JVB Videobridge Pods Stuck in `Pending` (`hostPort` Conflict)
+
+* **Symptom:** A JVB pod remains in `Pending` with event `0/3 nodes are available: 1 node(s) had untolerated taint, 2 node(s) didn't have free ports for the requested pod ports (10000)`.
+* **Root Cause:** JVB uses `useHostNetwork: true` / `hostPort: 10000/UDP` for direct kernel-level WebRTC media routing. Each physical Kubernetes node can bind port 10000 exactly once.
+* **Resolution:**
+  * If your cluster has 2 active worker nodes (`jitsi-meet2` & `jitsi-meet3`), set `jitsi-meet.jvb.replicaCount: 2` in `values-prod.yaml`.
+  * Never set `replicaCount` higher than the number of active physical worker nodes.
+  ```bash
+  # Scale deployment to match available nodes
+  kubectl scale deployment unity-meet-jitsi-meet-jvb-0 -n jitsi --replicas=2
+  ```
+
+---
+
+### Incident 3: Lib-Jitsi-Meet `TypeError: Cannot read properties of undefined (reading 'type')`
+
+* **Symptom:** Chrome developer console reports:
+  ```text
+  ConnectionQuality.ts:213 Uncaught TypeError: Cannot read properties of undefined (reading 'type')
+      at On.<anonymous> (ConnectionQuality.ts:213:29)
+  ```
+* **Root Cause:** In upstream `lib-jitsi-meet`, the stats callback expects an event object `t`, but an undefined event payload triggers `"stats" === t.type`, throwing an uncaught TypeError.
+* **Resolution (GitOps Automated):**
+  A permanent `lifecycle.postStart` hook is configured in `values-prod.yaml`:
+  ```yaml
+  jitsi-meet:
+    web:
+      lifecycle:
+        postStart:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - perl -pi -e "s/\"stats\"===t\.type/t&&\"stats\"===t\.type/g" /usr/share/jitsi-meet/libs/lib-jitsi-meet.min.js
+  ```
+  Every time `unity-meet-jitsi-meet-web` starts or restarts, the script safely patches the minified bundle automatically.
+
+---
+
+### Incident 4: Screen Share Aspect Ratio Glitching & Jagged Zoom
+
+* **Symptom:** When sharing a high-resolution or ultra-wide screen, the video jumps between cropped (`cover`) and padded (`contain`), or lags during stage zooming.
+* **Resolution:**
+  1. **GPU Acceleration:** Stage viewport uses `transform: scale(...)` and CSS `will-change: transform; transform: translateZ(0);` for 60 FPS hardware acceleration.
+  2. **1-Click Fit / Fill Toggle:** Attendees can switch between **Fit to Screen** (preserve full text clarity without cropping) and **Fill Stage** (immersive full screen) via the floating stage pill controls.
+  3. **Floating Controls Capsule:** Stage controls float cleanly with `backdrop-blur-md` without obscuring presentations or bottom toolbars.
+
+---
+
+## 💻 Part 3: Local Docker Compose Operations
+
 ```bash
+# Start all local microservices
+docker compose up -d
+
+# Check status of local containers
+docker compose ps
+
+# Force recreate local containers
 docker compose up -d --force-recreate
-```
 
-### 3. Rebuild Next.js App
-```bash
-cd web-app
-npm run build
-cd ..
-docker compose restart portal
+# View real-time logs
+docker compose logs -f
+
+# Safely stop local containers
+docker compose down
 ```

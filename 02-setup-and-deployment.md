@@ -1,61 +1,82 @@
 # 02. Setup & Deployment Guide
 
-This guide details how to install, configure, and launch Unity Meet locally or on a production cloud server.
+This guide details how to deploy Unity Meet to **Production Kubernetes (Helm GitOps)** or run it locally using **Docker Compose**.
 
 ---
 
-## 📋 Prerequisites
+## 🏛️ Part 1: Production Kubernetes Deployment (Helm & GitOps)
 
-* **Docker Engine** (v24.0+) & **Docker Compose** (v2.0+)
-* **Node.js** (v18+) & **npm** (for building the Next.js portal)
-* **OpenSSL** (for SSL certificate generation)
+The production deployment at **`meet.unity-workspace.com`** runs on a bare-metal Kubernetes cluster orchestrated via Helm with Traefik v3, MetalLB VIP, Longhorn CSI, and automated lifecycle patches.
+
+### 1. Cluster Topology & Access
+* **Control Plane Node:** `jitsi-meet2` (`10.1.18.10`)
+* **Worker / Control Plane Node:** `jitsi-meet3` (`10.1.18.11`)
+* **MetalLB Virtual IP (VIP):** `10.1.18.200` (Traefik v3 Ingress Entrypoint)
+* **SSH Access:**
+  ```bash
+  ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10
+  ```
+
+### 2. Building & Pushing Container Images (`linux/amd64`)
+Since cluster nodes run Linux x86_64, images must be compiled for `linux/amd64` using `docker buildx`:
+
+```bash
+cd /Users/alexkgm/Desktop/Jitsi
+
+# Build Go API Microservice
+docker buildx build --platform linux/amd64 -t alexkgm/unity-meet-api:latest --push ./api
+
+# Build Next.js 16 Web Portal
+docker buildx build --platform linux/amd64 -t alexkgm/unity-meet-web:latest --push ./web-app
+```
+
+### 3. Synchronizing & Deploying Helm Chart
+The Helm chart is tracked in `unity-meet-helm.git`. Deployments are executed from the control plane node:
+
+```bash
+# 1. Commit and push Helm configuration locally
+cd /Users/alexkgm/Desktop/jitsi-helm
+git add .
+git commit -m "chore: update helm configuration"
+git push origin main
+
+# 2. Rsync chart to master node
+rsync -avz --exclude '.git' -e "ssh -i ~/.ssh/unity-workspace-key" /Users/alexkgm/Desktop/jitsi-helm/ root@10.1.18.10:/root/unity-meet-helm/
+
+# 3. Apply Helm upgrade on master node (GitOps Safe)
+ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10 "cd /root/unity-meet-helm && helm upgrade unity-meet . -n jitsi -f values-prod.yaml"
+
+# 4. Trigger rolling restart of application pods
+ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10 "kubectl rollout restart deployment/unity-meet-api deployment/unity-meet-web -n jitsi"
+```
+
+### 4. GitOps Guarantees Built into the Chart
+* **Traefik v3 IngressRoute:** Explicitly configured via `templates/traefik-ingressroute.yaml` with host rules, path prefixes, and TLS certificates.
+* **JVB Replica Sizing:** Fixed at `replicaCount: 2` to match the two active physical nodes, guaranteeing zero `Pending` pods due to host port 10000 binding.
+* **ConnectionQuality Fix Hook:** Injected via `jitsi-meet.web.lifecycle.postStart` to automatically sanitize `lib-jitsi-meet.min.js` on every pod startup:
+  ```bash
+  perl -pi -e "s/\"stats\"===t\.type/t&&\"stats\"===t\.type/g" /usr/share/jitsi-meet/libs/lib-jitsi-meet.min.js
+  ```
+* **Custom Assets Mount:** Next-gen watermark, `interface_config.js`, and `head.html` mounted cleanly from ConfigMaps.
 
 ---
 
-## 🛠️ Step 1: Clone & Configure `.env`
+## 💻 Part 2: Local Development Setup (Docker Compose)
 
-Copy the environment template and verify your secrets:
+For rapid offline UI development and API testing:
 
+### 1. Prerequisites
+* **Docker Desktop** (v24.0+) & **Docker Compose** (v2.0+)
+* **Node.js** (v18+) & **pnpm** or **npm**
+* **OpenSSL** (for TLS 1.3 self-signed SAN certs)
+
+### 2. Configure Local `.env`
 ```bash
 cd /Users/alexkgm/Desktop/Jitsi
 cp env.example .env
 ```
 
-### Core Environment Settings (`.env`):
-```ini
-# Domain & Protocol
-HTTP_PORT=8080
-HTTPS_PORT=8443
-PUBLIC_URL=https://localhost:8443
-DOCKER_HOST_ADDRESS=127.0.0.1
-
-# Security & Token Authentication
-ENABLE_AUTH=1
-ENABLE_GUESTS=0
-AUTH_TYPE=jwt
-JWT_APP_ID=my_jitsi_app
-JWT_APP_SECRET=your_super_secret_jwt_key_here
-JWT_ACCEPTED_ISSUERS=my_jitsi_app
-JWT_ACCEPTED_AUDIENCES=my_jitsi_app
-
-# Performance & UI Lockdowns
-ENABLE_WELCOME_PAGE=0
-ENABLE_RECORDING=0
-ENABLE_LIVESTREAMING=0
-```
-
----
-
-## 🔐 Step 2: SSL Certificate Generation (TLS 1.3 SAN)
-
-Modern Chrome and Safari require certificates with explicit `Subject Alternative Names` (SAN) and `keyUsage = critical, digitalSignature, keyEncipherment` to prevent `ERR_SSL_KEY_USAGE_INCOMPATIBLE`.
-
-Run the automated certificate generator:
-```bash
-./scripts/setup.sh
-```
-
-Or generate manually:
+### 3. Generate Local TLS 1.3 SAN Certificate
 ```bash
 mkdir -p config/web/keys
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -67,37 +88,13 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -addext "extendedKeyUsage=serverAuth"
 ```
 
----
-
-## 📦 Step 3: Build Next.js Web Portal
-
+### 4. Run Local Services
 ```bash
-cd web-app
-npm install
-npm run build
-cd ..
-```
-
----
-
-## 🚀 Step 4: Launch Containers
-
-Use the included management script:
-
-```bash
-./manage.sh start
-```
-
-Or using Docker Compose:
-```bash
+# Start backend stack (WebRTC, Prosody, Jicofo, JVB, API, Valkey)
 docker compose up -d
+
+# Start Next.js local dev server with Turbopack
+cd web-app
+pnpm dev
 ```
-
----
-
-## 🧪 Step 5: Verification & Browser Access
-
-1. Open your browser and navigate to:
-   👉 **`http://localhost:3000`**
-2. On your first HTTPS connection to Jitsi (`https://localhost:8443`), accept the self-signed SSL certificate in Chrome by clicking **Advanced ➔ Proceed to localhost (unsafe)** or typing `thisisunsafe` on the page.
-3. Click **"Start Instant Meeting"** from the portal — you will enter the secure, encrypted room instantly!
+Open **`http://localhost:3000`** in Chrome/Brave to test. Accept the certificate on `https://localhost:8443`.

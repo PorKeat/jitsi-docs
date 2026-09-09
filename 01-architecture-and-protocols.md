@@ -20,40 +20,44 @@ This guide explains the complete architecture, networking protocols, and technic
 
 ---
 
-## 🏛️ Microservices Stack Breakdown
+## 🏛️ Microservices Stack Breakdown (Production Kubernetes)
 
-| Service | Container | Role (Simple Explanation) | Tech Stack |
+| Service | Pod / Component | Role (Simple Explanation) | Tech Stack |
 | :--- | :--- | :--- | :--- |
-| **Web Portal** | `jitsi-web-1` (Port 3000) | The main website with dashboard, camera preview, and video call controls. | Next.js 16 (Turbopack), React 19, Tailwind CSS |
-| **FastAPI Backend** | `jitsi-api-1` (Port 8000) | Signs login tokens, encrypts invite links, checks room status, and manages bans. | Python 3.11, FastAPI, Pydantic v2, PyJWT |
-| **Nginx Web Proxy** | `jitsi-jitsi-web-1` (Port 8443) | Secure HTTPS gateway handling SSL certificates and static WebRTC files. | Nginx, OpenSSL TLS 1.3 |
-| **Prosody XMPP** | `jitsi-prosody-1` | Handles chat, validates JWT tokens, and manages participant presence. | Lua, Prosody XMPP Server |
-| **Jicofo** | `jicofo` | Room focus manager that allocates video bridges for each conference. | Java 17, XMPP Focus Component |
-| **JVB SFU** | `jitsi-jvb-1` (Port 10000 UDP) | Video Media Server that routes live audio and video streams between attendees. | Java, WebRTC, Colibri Protocol |
-| **Whiteboard Relay** | `jitsi-whiteboard-1` (Port 3002) | Real-time WebSocket relay server for the shared collaborative drawing canvas. | Node.js, Excalidraw Backend |
+| **Ingress Gateway** | Traefik v3 IngressRoute | Routes traffic from MetalLB VIP (`10.1.18.200`) to microservices with SSL & WebSockets. | Traefik v3, MetalLB, Let's Encrypt |
+| **Web Portal UI** | `unity-meet-web` (Port 3000) | Full Next.js 16 UI with dashboard, green room, smooth stage zoom, and meeting frame. | Next.js 16 (Turbopack), React 19, Tailwind CSS |
+| **API Microservice**| `unity-meet-api` (Port 8000) | High-performance Go service signing JWTs, encrypting links, room locks, and bans. | Go (Golang) 1.22, Gin/Chi, HMAC-SHA256, AES-256-GCM |
+| **In-Memory Cache** | `unity-meet-valkey` (Port 6379) | Sub-millisecond distributed cache for active rooms, knocking lobby, and rate limits. | Valkey 8.0, Longhorn CSI Persistence |
+| **Database** | `unity-meet-postgres` (Port 5432)| Relational database for persistent users, audit logs, and meeting archives. | PostgreSQL 15, Longhorn CSI Persistence |
+| **Jitsi Web Gateway**| `unity-meet-jitsi-meet-web` | Serves Jitsi WebRTC core assets, BOSH (`/http-bind`), and WebSocket endpoints. | Nginx, lib-jitsi-meet (patched via postStart) |
+| **Prosody XMPP** | `unity-meet-jitsi-meet-prosody-0`| Real-time XMPP signaling, JWT authentication, and participant presence. | Lua 5.4, Prosody XMPP Server |
+| **Jicofo** | `unity-meet-jitsi-meet-jicofo` | Conference focus allocator assigning media bridges for rooms. | Java 17, XMPP Focus Component |
+| **JVB Videobridge** | `unity-meet-jitsi-meet-jvb-0` (2 pods)| High-throughput SFU routing WebRTC audio/video on UDP 10000 per node. | Java 17, WebRTC, Colibri Protocol |
+| **Jibri Recorder** | `unity-meet-jitsi-meet-jibri` | Headless Chromium recorder recording meetings to Longhorn storage. | Java, ALSA Virtual Audio, FFmpeg |
 
 ---
 
 ## 🔄 End-to-End Call Flow (Step-by-Step)
 
 ```text
-1. User clicks "Start Instant Meeting" on Next.js 16 Web UI (Port 3000)
+1. User clicks "Start Instant Meeting" on Next.js 16 Web UI (meet.unity-workspace.com)
    ▼
-2. Web UI asks FastAPI Backend (Port 8000): "Create a new meeting room"
+2. Web UI calls Go API Microservice (/api/generate-room-and-token):
+   - Signs secure HS256 JWT token with room name and user identity
+   - Generates AES-256-GCM encrypted room invite link
+   - Stores active room state in Valkey 8 (6379) & PostgreSQL 15
    ▼
-3. FastAPI generates a Host Secret (sec_<hex>) and signs a secure HS256 JWT token
+3. User enters Green Room to preview camera and test microphone volume
    ▼
-4. User enters Green Room to preview camera and test microphone volume
+4. User enters meeting -> Traefik IngressRoute proxies WebSockets to Prosody XMPP
    ▼
-5. User enters meeting -> Nginx Gateway (Port 8443) verifies JWT with Prosody XMPP
+5. Prosody validates JWT token and asks Jicofo: "Allocate a video bridge for this room"
    ▼
-6. Prosody validates token and asks Jicofo: "Allocate a video bridge for this room"
+6. Jicofo connects to JVB Videobridge (Node 2: 10.1.18.10 or Node 3: 10.1.18.11)
    ▼
-7. Jicofo connects to JVB (Videobridge SFU)
+7. JVB opens encrypted DTLS-SRTP media stream on UDP Port 10000 (host network)
    ▼
-8. JVB opens encrypted DTLS-SRTP media stream on UDP Port 10000
-   ▼
-9. Live HD Video & Audio streams flow smoothly between all attendees!
+8. Live HD Video & Audio streams flow with GPU-accelerated smooth zoom & stage fit/fill!
 ```
 
 ---
