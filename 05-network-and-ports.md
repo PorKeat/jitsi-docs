@@ -49,18 +49,18 @@ Clients (Web Browsers)
 | **`5222`** | `TCP` | Internal | Prosody XMPP | Internal Only | Internal client-to-server XMPP signaling |
 | **`5347`** | `TCP` | Internal | Prosody Component | Internal Only | Internal XMPP component connection for Jicofo |
 
----
+## 🛡️ External Inbound Firewall & Network Exposure Requirements
 
-## 🛡️ Firewall Configuration Rules (UFW / Edge Router)
+To allow users outside the local network or across the internet to join meetings, the following ports must be allowed through your edge router, NAT port forwarding, cloud security groups, or perimeter firewall:
 
-```bash
-# Allow Traefik Ingress Traffic (MetalLB VIP)
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+| Inbound Port | Protocol | Target Destination | Requirement | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **`443`** | `TCP` | Ingress VIP (`10.1.18.200:443`) | **MANDATORY** | Public HTTPS web access, REST API microservice, and secure WebSockets (`/xmpp-websocket`) |
+| **`80`** | `TCP` | Ingress VIP (`10.1.18.200:80`) | **MANDATORY** | Automatic HTTP-to-HTTPS redirect and Let's Encrypt ACME SSL certificate renewals |
+| **`10000`** | `UDP` | Cluster Worker Nodes (`10.1.18.10`, `10.1.18.11`) | **CRITICAL** | WebRTC audio & video media streams (DTLS-SRTP). Must route directly to physical host ports |
+| **`4443`** | `TCP` | Cluster Worker Nodes (`10.1.18.10`, `10.1.18.11`) | Optional | TCP media fallback for attendees behind strict firewalls that block UDP |
 
-# Allow WebRTC Media UDP Traffic on all cluster worker nodes (MANDATORY)
-sudo ufw allow 10000/udp
+> [!IMPORTANT]
+> **Internal Service Security (Do NOT Expose Outside):**
+> All internal ports (`3000` Next.js Web UI, `8000` Go API, `6379` Valkey, `5432` PostgreSQL, `5222` Prosody XMPP) operate strictly on the internal Kubernetes ClusterIP network and **must NOT** be opened or forwarded to the public internet. External clients only reach them through Traefik Ingress on port 443/TCP.
 
-# Allow SSH Management (Restricted to VPN / Admin Subnet)
-sudo ufw allow 22/tcp
-```
