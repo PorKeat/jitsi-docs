@@ -126,4 +126,4 @@ The Go microservice backend implements an intelligent configuration loader:
 ### 3. Kubernetes ServiceAccount Authentication Bridge
 - Pods authenticate with Vault using ephemeral projected Kubernetes ServiceAccount tokens (`unity-meet-api`).
 - Vault validates tokens against the Kubernetes API server using the `TokenReview` API via a secure proxy on port `8443`.
-- Vault issues a short-lived token restricted to the least-privilege policy `unity-meet-api`, granting read-only access to `secret/data/unity-workspace/meet/api`.
+- Vault issues a short-lived token restricted to the least-privilege policy `unity-meet-api`, granting read-only access to `secret/data/meet/api`.

@@ -160,7 +160,7 @@ export VAULT_CACERT="/opt/vault/tls/vault-ca.crt"
 export VAULT_ADDR="https://127.0.0.1:8200"
 
 # Put new secret values
-vault kv put secret/unity-workspace/meet/api \
+vault kv put secret/meet/api \
   jwt_app_id="unity_meet_enterprise" \
   jwt_app_secret="<new-secure-secret-key>" \
   database_url="postgres://postgres:<new-password>@unity-meet-postgres:5432/unity_meet?sslmode=disable"

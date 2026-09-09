@@ -25,7 +25,7 @@ This guide details the production Helm configuration parameters (`values-prod.ya
 | **Vault** | `vault.enabled` | `true` | Injects HashiCorp Vault Agent sidecar (`/vault/secrets`) |
 | | `vault.role` | `unity-meet-api` | Vault Kubernetes auth role name |
 | | `vault.tlsCaSecret` | `vault-ca-cert` | Kubernetes Secret with Vault internal root CA |
-| | `vault.secretPath` | `secret/data/unity-workspace/meet/api` | KV-v2 path for dynamic in-memory credential delivery |
+| | `vault.secretPath` | `secret/data/meet/api` | KV-v2 path for dynamic in-memory credential delivery |
 
 ---
 
