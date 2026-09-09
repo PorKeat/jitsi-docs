@@ -164,6 +164,12 @@ vault kv put secret/meet/api \
   jwt_app_id="unity_meet_enterprise" \
   jwt_app_secret="<new-secure-secret-key>" \
   database_url="postgres://postgres:<new-password>@unity-meet-postgres:5432/unity_meet?sslmode=disable"
+
+# Also update the postgres secret
+vault kv put secret/meet/postgres \
+  postgres_user="postgres" \
+  postgres_password="<new-password>" \
+  postgres_database="unity_meet"
 ```
 
 #### 3. Triggering Zero-Downtime Rolling Update
@@ -174,7 +180,23 @@ kubectl rollout restart deployment/unity-meet-api -n jitsi
 kubectl rollout status deployment/unity-meet-api -n jitsi
 ```
 
-#### 4. Troubleshooting Vault Agent Webhook / Auth Failures
+#### 4. Helm Upgrade (Secrets from Vault)
+> **Best Practice:** `values-prod.yaml` contains **zero plaintext secrets**. All sensitive values are supplied at deploy time via `--set`, sourced from Vault.
+
+```bash
+# Fetch secrets from Vault Host
+PG_PASS=$(vault kv get -field=postgres_password secret/meet/postgres)
+JWT_SECRET=$(vault kv get -field=jwt_app_secret secret/meet/api)
+
+# Helm upgrade on K8s Control Plane
+helm upgrade unity-meet . -n jitsi \
+  -f values-prod.yaml \
+  --set postgres.auth.password="$PG_PASS" \
+  --set global.jwtSecret="$JWT_SECRET" \
+  --set "jitsi-meet.extraCommonEnvs.JWT_APP_SECRET=$JWT_SECRET"
+```
+
+#### 5. Troubleshooting Vault Agent Webhook / Auth Failures
 If API pods show `Init:0/1` or `CrashLoopBackOff`:
 ```bash
 # Check init container logs (retrieves secret at startup)
