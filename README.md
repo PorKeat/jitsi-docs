@@ -17,8 +17,8 @@
 * ✏️ **Built-in Collaborative Whiteboard:** Interactive Next.js drawing canvas with 60 FPS neon laser pointer, shapes, text, and 1-click Color Studio.
 * 🛡️ **Cryptographic Token Auth & AES-256-GCM:** HMAC-SHA256 tokens and AEAD ciphertext invite links issued by the Go backend microservice.
 * 🏛️ **HashiCorp Vault Agent Sidecars:** Dynamic in-memory secrets delivery via `tmpfs` volumes (`/vault/secrets/credentials.env`), eliminating plaintext secrets from etcd, Git, and Helm.
-* ⚡ **Ultra-Low Latency SFU:** 100% in-browser WebRTC via JVB over DTLS-SRTP (Port 10000 UDP) scaled across active cluster nodes.
-* 🚀 **Enterprise Kubernetes Architecture:** GitOps Helm deployment with Traefik v3 IngressRoute, MetalLB VIP (`10.1.18.200`), Longhorn distributed storage, and automated lifecycle bug patches.
+* ⚡ **Ultra-Low Latency SFU:** 100% in-browser WebRTC via JVB over DTLS-SRTP (Port 10000 UDP) routed through dedicated MetalLB VIP (`10.1.18.201`).
+* 🚀 **Enterprise Kubernetes Architecture:** GitOps Helm deployment with Traefik v3 IngressRoute, dual MetalLB VIPs (`10.1.18.200` for Ingress, `10.1.18.201` for JVB Media), Longhorn distributed storage, and automated lifecycle bug patches.
 
 ---
 
@@ -27,11 +27,11 @@
 | File | Topic | Description |
 | :--- | :--- | :--- |
 | [**01. Architecture & Protocols**](./01-architecture-and-protocols.md) | System Design & Protocols | Kubernetes cluster topology, Go API microservice, Valkey datastore, WebRTC, XMPP, DTLS-SRTP, Colibri, and SFU flows. |
-| [**02. Setup & Deployment**](./02-setup-and-deployment.md) | Installation & Startup | Production Kubernetes Helm deployment (GitOps), MetalLB VIP, Docker Compose local dev, and TLS SAN SSL certs. |
+| [**02. Setup & Deployment**](./02-setup-and-deployment.md) | Installation & Startup | Production Kubernetes Helm deployment (GitOps), dual MetalLB VIPs, Docker Compose local dev, and TLS SAN SSL certs. |
 | [**03. Security, Passwords & Lobby**](./03-security-and-jwt.md) | Security & Access Control | HashiCorp Vault Agent sidecars, AES-256-GCM links, Host Secret validation, Knocking Lobby mode, meeting passwords, and JWT tokens. |
 | [**04. Customization & Features**](./04-customization-and-branding.md) | UI, Green Room & Stage Controls | Native Next.js 16 UI, Green Room camera lobby, smooth screen sharing fit/fill zoom, Whiteboard, and toolbar. |
-| [**05. Network & Port Allocation**](./05-network-and-ports.md) | Networking & Firewalls | Kubernetes cluster networking, MetalLB VIP (10.1.18.200), Traefik v3 IngressRoute, JVB hostPort 10000/UDP, and port mapping. |
-| [**06. Operations & Troubleshooting**](./06-operations-and-troubleshooting.md) | DevOps & Maintenance | Kubernetes cluster management, Helm upgrade runbooks, JVB node sizing, stuck pod cleanup, Longhorn recovery, and Docker cheat sheets. |
+| [**05. Network & Port Allocation**](./05-network-and-ports.md) | Networking & Firewalls | Kubernetes cluster networking, dual MetalLB VIPs (`10.1.18.200` Ingress, `10.1.18.201` JVB), L2Advertisement on `eth0`, and perimeter NAT rules. |
+| [**06. Operations & Troubleshooting**](./06-operations-and-troubleshooting.md) | DevOps & Maintenance | Kubernetes cluster management, MetalLB pool diagnostics, Vault TokenReviewer JWT auth fix, Helm upgrades, and Docker cheat sheets. |
 | [**07. Configuration & Reference**](./07-config-and-scripts-reference.md) | Config & Architecture Guide | Detailed breakdown of Helm values (`values-prod.yaml`), environment variables, Go JWT signing, and directory layout. |
 | [**08. Next.js Integration & Customization**](./08-nextjs-integration-and-customization.md) | Frontend Dev & SDK Guide | Next.js 16 App Router, Turbopack, dynamic SDK imports, IFrame API commands/events, custom toolbar, Green Room, and Whiteboard. |
 | [**09. Valkey Cache & Distributed State**](./09-valkey-cache-and-distributed-state.md) | High-Performance In-Memory Cache | Distributed room state, knocking lobby sync, rate limiting, and Unity Calendar holiday & event query acceleration. |

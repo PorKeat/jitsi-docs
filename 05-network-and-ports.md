@@ -18,10 +18,9 @@ This document details the complete networking topology, port allocations, and co
                   │ 443/TCP (HTTPS/WSS) & 80/TCP (HTTP)                           │ 10000/UDP (Direct WebRTC Media)
                   ▼                                                               ▼
 ┌──────────────────────────────────────────────┐              ┌──────────────────────────────────────────────┐
-│ MetalLB Virtual IP (VIP): 10.1.18.200        │              │ Physical Node HostPorts (JVB SFU Media)      │
-│ └── Traefik v3 Ingress Controller            │              │  ├── Node 2 (jitsi-meet2): 10.1.18.10:10000  │
-└──────────────────────┬───────────────────────┘              │  └── Node 3 (jitsi-meet3): 10.1.18.11:10000  │
-                       │                                      └──────────────────────┬───────────────────────┘
+│ MetalLB VIP (default pool): 10.1.18.200      │              │ MetalLB VIP (jvb-pool): 10.1.18.201          │
+│ └── Traefik v3 Ingress Controller            │              │ └── unity-meet-jitsi-meet-jvb (LoadBalancer) │
+└──────────────────────┬───────────────────────┘              └──────────────────────┬───────────────────────┘
                        │                                                             │
 ═══════════════════════╪═════════════════════════════════════════════════════════════╪═════════════════════════
                        │ ZONE 2: INTER-VM & CROSS-SERVICE LAN (10.1.18.0/24)         │
@@ -29,11 +28,12 @@ This document details the complete networking topology, port allocations, and co
                        │  • etcd Quorum: 2379-2380/TCP (Node 2 ◄► Node 3)            │
                        │  • Longhorn CSI Storage Engine: 9500-9504/TCP               │
                        │  • Keycloak SSO Server: 8080/443 (10.1.18.8)                │
+                       │  • Vault Secrets Manager: 8200/TCP (10.1.18.8)              │
                        │  • Calendar Service API: 5434/TCP (Database / Microservice) │
                        │  • SSH Management: 22/TCP (Admin VPN Only)                  │
 ═══════════════════════╪═════════════════════════════════════════════════════════════╪═════════════════════════
                        │
-                       ▼ ZONE 3: STRICTLY INTERNAL POD OVERLAY (ClusterIP)
+                       ▼ ZONE 3: STRICTLY INTERNAL POD OVERLAY (ClusterIP & Cilium VXLAN)
        ┌───────────────────────────────┬───────────────────────────────┐
        │                               │                               │
        ▼                               ▼                               ▼
@@ -58,10 +58,10 @@ These ports **MUST be allowed through your perimeter firewall, edge router, or N
 
 | Inbound Port | Protocol | Target Destination | Scope | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **`443`** | `TCP` | MetalLB VIP (`10.1.18.200:443`) | **Mandatory** | Public HTTPS entrypoint for Next.js Web UI, Go REST API, and WebSocket tunneling (`/xmpp-websocket`). |
-| **`80`** | `TCP` | MetalLB VIP (`10.1.18.200:80`) | **Mandatory** | Automatic HTTP-to-HTTPS redirect (301) and Let's Encrypt ACME HTTP-01 SSL challenge validation. |
-| **`10000`** | `UDP` | Cluster Worker Nodes (`10.1.18.10`, `10.1.18.11`) | **Critical** | Direct WebRTC audio/video media streams (DTLS-SRTP). Binds directly to the physical host network (`useHostNetwork: true`). |
-| **`4443`** | `TCP` | Cluster Worker Nodes (`10.1.18.10`, `10.1.18.11`) | Optional | TCP media fallback for corporate environments that block outbound UDP 10000. |
+| **`443`** | `TCP` | MetalLB Ingress VIP (`10.1.18.200:443`) | **Mandatory** | Public HTTPS entrypoint for Next.js Web UI, Go REST API, and WebSocket tunneling (`/xmpp-websocket`). |
+| **`80`** | `TCP` | MetalLB Ingress VIP (`10.1.18.200:80`) | **Mandatory** | Automatic HTTP-to-HTTPS redirect (301) and Let's Encrypt ACME HTTP-01 SSL challenge validation. |
+| **`10000`** | `UDP` | MetalLB JVB VIP (`10.1.18.201:10000`) | **Critical** | Direct WebRTC audio/video media streams (DTLS-SRTP) routed via MetalLB LoadBalancer VIP to JVB pods. |
+| **`4443`** | `TCP` | MetalLB JVB VIP (`10.1.18.201:4443`) | Optional | TCP media fallback for corporate environments that block outbound UDP 10000. |
 
 ---
 
@@ -100,15 +100,45 @@ These ports operate strictly inside the Kubernetes virtual ClusterIP network. Th
 
 ---
 
+## ⚙️ MetalLB LoadBalancer & IP Pool Configuration
+
+MetalLB manages two Layer 2 Virtual IPs (VIPs) for the cluster, advertised over physical interface **`eth0`**:
+
+| Pool Name | CIDR / Range | Assigned VIP | Associated Service | Protocol |
+| :--- | :--- | :--- | :--- | :--- |
+| **`default`** | `10.1.18.200/32` | `10.1.18.200` | `traefik/traefik` (Ingress Controller) | `80/TCP`, `443/TCP` |
+| **`jvb-pool`**| `10.1.18.201/32` | `10.1.18.201` | `jitsi/unity-meet-jitsi-meet-jvb` (SFU Media) | `10000/UDP` |
+
+### Layer 2 Advertisement (`L2Advertisement`)
+```yaml
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - default
+  - jvb-pool
+  interfaces:
+  - eth0
+```
+
+> [!IMPORTANT]
+> The `interfaces` field must be set to the active physical interface (**`eth0`**). If set to an inactive or non-existent interface (e.g. `ens19`), MetalLB speakers will fail to respond to ARP requests for the VIPs.
+
+---
+
 ## 📋 Firewall & Routing Rule Summary
 
-1. **At your Edge Gateway / Public Router:**
-   * Forward **`80/TCP`** and **`443/TCP`** to MetalLB VIP **`10.1.18.200`**.
-   * Forward **`10000/UDP`** directly to the physical cluster nodes (**`10.1.18.10`** and **`10.1.18.11`**).
+1. **At your Edge Gateway / Public Router (`10.1.18.1`):**
+   * **Web & Signaling:** Forward **`80/TCP`** and **`443/TCP`** to MetalLB Ingress VIP **`10.1.18.200`**.
+   * **WebRTC Video Media:** Forward **`10000/UDP`** directly to MetalLB JVB VIP **`10.1.18.201`**.
 2. **Between Cluster VMs / Subnet (`10.1.18.0/24`):**
    * Allow full inter-node traffic for Kubernetes CNI (`8472/UDP`), etcd (`2379-2380/TCP`), and Longhorn storage (`9500-9504/TCP`).
-   * Allow outbound HTTP/HTTPS to Keycloak (`10.1.18.8`) and Calendar service.
+   * Allow outbound HTTP/HTTPS to Keycloak (`10.1.18.8`), Vault (`10.1.18.8:8200`), and Calendar service.
 3. **Inside Kubernetes (Pods):**
-   * Handled automatically by Kubernetes CNI and ClusterIP services; no manual firewall rules required.
+   * Handled automatically by Kubernetes CNI (Cilium VXLAN) and ClusterIP/IPVS services; no manual firewall rules required.
+
 
 

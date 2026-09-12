@@ -196,22 +196,114 @@ helm upgrade unity-meet . -n jitsi \
   --set "jitsi-meet.extraCommonEnvs.JWT_APP_SECRET=$JWT_SECRET"
 ```
 
-#### 5. Troubleshooting Vault Agent Webhook / Auth Failures
-If API pods show `Init:0/1` or `CrashLoopBackOff`:
+#### 5. Troubleshooting Vault Agent Webhook / Auth Failures (`Init:0/1`)
+If API, Postgres, or Valkey pods are stuck in `Init:0/1`:
 ```bash
 # Check init container logs (retrieves secret at startup)
 kubectl logs deploy/unity-meet-api -n jitsi -c vault-agent-init
+kubectl logs <stuck-pod-name> -n jitsi -c vault-agent-init
 
 # Check sidecar logs (keeps secrets refreshed)
 kubectl logs deploy/unity-meet-api -n jitsi -c vault-agent
+```
 
-# Verify Kubernetes API TokenReview proxy on 10.1.18.10:8443
-systemctl status k8s-apiserver-proxy.service
+##### Resolving `permission denied` (403) from Vault (`auth/kubernetes/login`)
+In Kubernetes 1.24+, ServiceAccount tokens mounted inside pods are short-lived projected tokens that do not possess the `system:auth-delegator` role. Vault **must** be configured with a long-lived `token_reviewer_jwt`:
+
+1. Extract the reviewer token and cluster CA cert from Kubernetes:
+```bash
+TOKEN=$(kubectl get secret -n vault vault-auth-reviewer-token -o jsonpath='{.data.token}' | base64 -d)
+K8S_CA=$(kubectl get cm kube-root-ca.crt -n vault -o jsonpath='{.data.ca\.crt}')
+```
+
+2. Update Vault's Kubernetes authentication endpoint on Vault Host (`10.1.18.8`):
+```bash
+export VAULT_ADDR="https://127.0.0.1:8200"
+export VAULT_CACERT="/opt/vault/tls/vault-ca.crt"
+export VAULT_TOKEN="<root-token>"
+
+vault write auth/kubernetes/config \
+  kubernetes_host="https://10.1.18.10:8443" \
+  kubernetes_ca_cert="$K8S_CA" \
+  token_reviewer_jwt="$TOKEN" \
+  disable_local_ca_jwt=true \
+  disable_iss_validation=true
+```
+
+3. Re-create the stuck pods to force re-authentication:
+```bash
+kubectl delete pod -l app.kubernetes.io/component=postgres -n jitsi
+kubectl delete pod -l app.kubernetes.io/component=valkey -n jitsi
 ```
 
 ---
 
-## 💻 Part 3: Local Docker Compose Operations
+## 🎛️ Part 3: MetalLB LoadBalancer Operations & Diagnostics
+
+### 1. View Configured IP Pools
+```bash
+# List all IP pools and assigned ranges
+kubectl get ipaddresspools.metallb.io -n metallb-system
+
+# View detailed pool specifications
+kubectl get ipaddresspools.metallb.io -n metallb-system -o yaml
+```
+
+### 2. View & Verify Layer 2 Advertisements
+```bash
+# Check active L2Advertisement
+kubectl get l2advertisements.metallb.io -n metallb-system
+
+# Describe configuration (ensures eth0 and both pools are listed)
+kubectl -n metallb-system describe l2advertisement default
+```
+
+Expected output:
+```yaml
+Spec:
+  Interfaces:
+    eth0
+  Ip Address Pools:
+    default
+    jvb-pool
+```
+
+> [!CAUTION]
+> If `Interfaces` shows an inactive interface (e.g. `ens19`), MetalLB will fail to send ARP responses. Fix it by applying:
+> ```bash
+> cat <<EOF | kubectl apply -f -
+> apiVersion: metallb.io/v1beta1
+> kind: L2Advertisement
+> metadata:
+>   name: default
+>   namespace: metallb-system
+> spec:
+>   ipAddressPools:
+>   - default
+>   - jvb-pool
+>   interfaces:
+>   - eth0
+> EOF
+> ```
+
+### 3. Check Live VIP Announcements (Speaker Logs)
+```bash
+# Check which node speaker is actively announcing which VIP
+kubectl logs -n metallb-system -l component=speaker --tail=50 | grep "serviceAnnounced"
+```
+
+### 4. Verify Local IPVS Routing on Nodes
+```bash
+# Check IPVS dummy interface
+ip a show kube-ipvs0
+
+# Verify UDP 10000 VIP forwarding to JVB pod
+ipvsadm -ln | grep 10.1.18.201 -A 2
+```
+
+---
+
+## 💻 Part 4: Local Docker Compose Operations
 
 ```bash
 # Start all local microservices

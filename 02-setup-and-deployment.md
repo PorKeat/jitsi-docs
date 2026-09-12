@@ -11,7 +11,9 @@ The production deployment at **`meet.unity-workspace.com`** runs on a bare-metal
 ### 1. Cluster Topology & Access
 * **Control Plane Node:** `jitsi-meet2` (`10.1.18.10`)
 * **Worker / Control Plane Node:** `jitsi-meet3` (`10.1.18.11`)
-* **MetalLB Virtual IP (VIP):** `10.1.18.200` (Traefik v3 Ingress Entrypoint)
+* **Worker Node:** `jitsi-meet1` (`10.1.18.9`)
+* **MetalLB Ingress VIP:** `10.1.18.200` (Traefik v3 Ingress Entrypoint for HTTP/HTTPS)
+* **MetalLB Media VIP:** `10.1.18.201` (JVB Videobridge Entrypoint for WebRTC UDP 10000)
 * **SSH Access:**
   ```bash
   ssh -i ~/.ssh/unity-workspace-key root@10.1.18.10
